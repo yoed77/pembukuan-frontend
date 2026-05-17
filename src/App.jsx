@@ -7,21 +7,12 @@ function App() {
   const [paymentMethod, setPaymentMethod] = useState('cash'); 
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
-  const [receiptUrl, setReceiptUrl] = useState('');
   const [date, setDate] = useState('');
   const [message, setMessage] = useState('');
   const [formTransactionType, setFormTransactionType] = useState('expense');
 
   const currentYearMonth = new Date().toISOString().substring(0, 7);
   const [selectedMonth, setSelectedMonth] = useState(currentYearMonth);
-
-  const [historyPeriodMode, setHistoryPeriodMode] = useState('month'); 
-  const [customStartDate, setCustomStartDate] = useState('');
-  const [customEndDate, setCustomEndDate] = useState('');
-
-  const [filterType, setFilterType] = useState('all');       
-  const [filterMethod, setFilterMethod] = useState('all');   
-  const [filterCategory, setFilterCategory] = useState('all'); 
 
   const [summary, setSummary] = useState({ 
     pastCashBalance: 0, pastBankBalance: 0, pastGrandBalance: 0,
@@ -31,21 +22,24 @@ function App() {
     finalCashBalance: 0, finalBankBalance: 0, finalGrandBalance: 0
   });
 
+  // URL Ngrok Resmi Mas Yudi Yang Sudah Terbukti Aktif Sempurna
+  const BACKEND_URL = 'https://voice-eastcoast-platypus.ngrok-free.dev';
+
   const fetchData = async () => {
     try {
-      const resCat = await fetch('https://voice-eastcoast-platypus.ngrok-free.dev/api/categories', {
+      const resCat = await fetch(`${BACKEND_URL}/api/categories`, {
         headers: { 'ngrok-skip-browser-warning': '69420' }
       });
       const dataCat = await resCat.json();
       setCategories(Array.isArray(dataCat) ? dataCat : []);
 
-      const resTrans = await fetch('https://voice-eastcoast-platypus.ngrok-free.dev/api/transactions', {
+      const resTrans = await fetch(`${BACKEND_URL}/api/transactions`, {
         headers: { 'ngrok-skip-browser-warning': '69420' }
       });
       const dataTrans = await resTrans.json();
       setTransactions(Array.isArray(dataTrans) ? dataTrans : []);
     } catch (err) {
-      console.error('Gagal mengambil data dari backend Ngrok:', err);
+      console.error('Gagal mengambil data:', err);
     }
   };
 
@@ -55,7 +49,7 @@ function App() {
 
   useEffect(() => {
     if (categories.length > 0) {
-      const filteredCats = categories.filter(cat => cat.category_type === formTransactionType || cat.type === formTransactionType);
+      const filteredCats = categories.filter(cat => cat.type === formTransactionType || cat.category_type === formTransactionType);
       if (filteredCats.length > 0) setCategoryId(filteredCats[0].id);
     }
   }, [formTransactionType, categories]);
@@ -111,13 +105,13 @@ function App() {
       category_id: parseInt(categoryId), 
       amount: parseFloat(amount), 
       description: description || 'Tanpa keterangan',
-      receipt_url: receiptUrl || null, 
+      receipt_url: null, 
       date: date, 
       payment_method: paymentMethod
     };
 
     try {
-      const response = await fetch('https://voice-eastcoast-platypus.ngrok-free.dev/api/transactions', {
+      const response = await fetch(`${BACKEND_URL}/api/transactions`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -128,7 +122,7 @@ function App() {
 
       if (response.ok) {
         setMessage('✅ Catatan Keuangan Berhasil Disimpan!');
-        setAmount(''); setDescription(''); setReceiptUrl(''); setDate('');
+        setAmount(''); setDescription(''); setDate('');
         fetchData();
         setTimeout(() => setMessage(''), 3000);
       }
@@ -136,48 +130,6 @@ function App() {
       setMessage('❌ Hubungan ke server terputus.'); 
     }
   };
-
-  const handleDelete = async (id) => {
-    if (window.confirm('Apakah Anda yakin ingin menghapus catatan ini?')) {
-      try {
-        const response = await fetch(`https://voice-eastcoast-platypus.ngrok-free.dev/api/transactions/${id}`, { 
-          method: 'DELETE',
-          headers: { 'ngrok-skip-browser-warning': '69420' }
-        });
-        if (response.ok) { 
-          setMessage('🗑️ Catatan keuangan berhasil dihapus!'); 
-          fetchData();
-          setTimeout(() => setMessage(''), 3000);
-        }
-      } catch (error) { 
-        setMessage('❌ Hubungan ke server terputus.'); 
-      }
-    }
-  };
-
-  const displayedTransactions = transactions.filter((t) => {
-    const d = new Date(t.date || t.tanggal);
-    const formatTahunBulan = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    const formatTanggalLokal = (t.date || t.tanggal || '').split('T')[0];
-    const type = t.category_type || t.jenis_transaksi || 'all';
-    const method = t.payment_method || t.metode_pembayaran || 'all';
-    const catName = t.category_name || t.nama_kategori || 'all';
-
-    let matchWaktu = false;
-    if (historyPeriodMode === 'all') matchWaktu = true;
-    else if (historyPeriodMode === 'month') matchWaktu = formatTahunBulan === selectedMonth;
-    else if (historyPeriodMode === 'custom') {
-      const start = customStartDate || '1970-01-01';
-      const end = customEndDate || '9999-12-31';
-      matchWaktu = formatTanggalLokal >= start && formatTanggalLokal <= end;
-    }
-
-    const matchType = filterType === 'all' || type === filterType || (filterType === 'income' && type === 'Pemasukan') || (filterType === 'expense' && type === 'Pengeluaran');
-    const matchMethod = filterMethod === 'all' || method === filterMethod || (filterMethod === 'cash' && method === 'Cash') || (filterMethod === 'bank' && method === 'Bank');
-    const matchCategory = filterCategory === 'all' || catName === filterCategory;
-
-    return matchWaktu && matchType && matchMethod && matchCategory;
-  });
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-start p-6 space-y-6">
@@ -228,7 +180,7 @@ function App() {
           </div>
         </div>
 
-        {/* KOTAK SALDO AKHIR FINAL (YANG SEMPAT HILANG - SEKARANG SUDAH KEMBALI) */}
+        {/* KOTAK SALDO AKHIR FINAL */}
         <div className="bg-slate-800 text-white p-4 rounded-xl shadow-md grid grid-cols-1 sm:grid-cols-3 gap-4 border border-slate-700">
           <div>
             <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">💵 SALDO AKHIR CASH</p>
@@ -299,10 +251,10 @@ function App() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-sm text-gray-600">
-              {displayedTransactions.length === 0 ? (
+              {transactions.length === 0 ? (
                 <tr><td colSpan="5" className="p-4 text-center text-gray-400 italic">Tidak ada transaksi.</td></tr>
               ) : (
-                displayedTransactions.map((t) => (
+                transactions.map((t) => (
                   <tr key={t.id} className="hover:bg-gray-50 transition">
                     <td className="p-3 whitespace-nowrap">{new Date(t.date || t.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
                     <td className="p-3"><span className="px-2 py-1 rounded-md text-xs font-semibold bg-gray-100">{t.category_name || t.nama_kategori}</span></td>
