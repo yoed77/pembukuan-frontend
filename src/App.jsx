@@ -38,11 +38,11 @@ function App() {
   // 1. Mengambil Data Awal dari Server Backend API
   const fetchData = async () => {
     try {
-      const resCat = await fetch('http://localhost:3001/api/categories');
+      const resCat = await fetch('http://thin-bushes-cut.loca.lt/api/categories');
       const dataCat = await resCat.json();
       setCategories(dataCat);
 
-      const resTrans = await fetch('http://localhost:3001/api/transactions');
+      const resTrans = await fetch('http://thin-bushes-cut.loca.lt/api/transactions');
       const dataTrans = await resTrans.json();
       setTransactions(dataTrans);
     } catch (err) {
@@ -113,7 +113,7 @@ function App() {
       receipt_url: receiptUrl || null, date, payment_method: paymentMethod
     };
     try {
-      const response = await fetch('http://localhost:3001/api/transactions', {
+      const response = await fetch('http://thin-bushes-cut.loca.lt/api/transactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(transaksiBaru),
@@ -129,7 +129,7 @@ function App() {
   const handleDelete = async (id) => {
     if (window.confirm('Apakah Anda yakin ingin menghapus catatan ini?')) {
       try {
-        const response = await fetch(`http://localhost:3001/api/transactions/${id}`, { method: 'DELETE' });
+        const response = await fetch(`http://thin-bushes-cut.loca.lt/api/transactions/${id}`, { method: 'DELETE' });
         if (response.ok) { setMessage('🗑️ Catatan keuangan berhasil dihapus!'); fetchData(); }
       } catch (error) { setMessage('❌ Hubungan ke server Backend terputus.'); }
     }
