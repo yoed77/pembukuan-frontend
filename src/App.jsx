@@ -13,17 +13,21 @@ function App() {
   const [message, setMessage] = useState('');
   const [formTransactionType, setFormTransactionType] = useState('expense');
 
+  // Filter Periode Bulanan Global (Dashboard Saldo Atas)
   const currentYearMonth = new Date().toISOString().substring(0, 7);
   const [selectedMonth, setSelectedMonth] = useState(currentYearMonth);
 
+  // Filter Waktu Riwayat Tabel
   const [historyPeriodMode, setHistoryPeriodMode] = useState('month'); 
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
+  // Filter Dropdown Jenis, Metode & Kategori
   const [filterType, setFilterType] = useState('all');       
   const [filterMethod, setFilterMethod] = useState('all');   
   const [filterCategory, setFilterCategory] = useState('all'); 
 
+  // State Dashboard Keuangan
   const [summary, setSummary] = useState({ 
     pastCashBalance: 0, pastBankBalance: 0, pastGrandBalance: 0,
     monthIncome: 0, monthExpense: 0, monthNetBalance: 0, 
@@ -31,18 +35,18 @@ function App() {
     finalCashBalance: 0, finalBankBalance: 0, finalGrandBalance: 0
   });
 
-  // 1. Mengambil Data Menggunakan HTTPS (Pipa Aman)
+  // 1. Ambil Data dari Server Backend via Ngrok
   const fetchData = async () => {
     try {
-      const resCat = await fetch('https://lzagr-158-140-171-93.run.pinggy-free.link/api/categories');
+      const resCat = await fetch('https://voice-eastcoast-platypus.ngrok-free.dev/api/categories');
       const dataCat = await resCat.json();
       setCategories(dataCat);
 
-      const resTrans = await fetch('https://lzagr-158-140-171-93.run.pinggy-free.link/api/transactions');
+      const resTrans = await fetch('https://voice-eastcoast-platypus.ngrok-free.dev/api/transactions');
       const dataTrans = await resTrans.json();
       setTransactions(dataTrans);
     } catch (err) {
-      console.error('Gagal mengambil data:', err);
+      console.error('Gagal mengambil data dari backend Ngrok:', err);
     }
   };
 
@@ -55,6 +59,7 @@ function App() {
     if (filteredCats.length > 0) setCategoryId(filteredCats[0].id);
   }, [formTransactionType, categories]);
 
+  // 2. Logika Hitung Akuntansi Kumulatif
   useEffect(() => {
     let mIncome = 0; let mExpense = 0; let cIncome = 0; let cExpense = 0;
     let bIncome = 0; let bExpense = 0; let pCash = 0; let pBank = 0;
@@ -100,6 +105,7 @@ function App() {
     else if (paymentMethod === 'bank' && inputAmount > summary.finalBankBalance) isSaldoMinus = true;
   }
 
+  // 3. Fungsi Simpan Transaksi Baru
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (isSaldoMinus) return; 
@@ -108,7 +114,7 @@ function App() {
       receipt_url: receiptUrl || null, date, payment_method: paymentMethod
     };
     try {
-      const response = await fetch('https://lzagr-158-140-171-93.run.pinggy-free.link/api/transactions', {
+      const response = await fetch('https://voice-eastcoast-platypus.ngrok-free.dev/api/transactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(transaksiBaru),
@@ -121,15 +127,17 @@ function App() {
     } catch (error) { setMessage('❌ Hubungan ke server Backend terputus.'); }
   };
 
+  // 4. Fungsi Hapus Transaksi
   const handleDelete = async (id) => {
     if (window.confirm('Apakah Anda yakin ingin menghapus catatan ini?')) {
       try {
-        const response = await fetch(`https://lzagr-158-140-171-93.run.pinggy-free.link/api/transactions/${id}`, { method: 'DELETE' });
+        const response = await fetch(`https://voice-eastcoast-platypus.ngrok-free.dev/api/transactions/${id}`, { method: 'DELETE' });
         if (response.ok) { setMessage('🗑️ Catatan keuangan berhasil dihapus!'); fetchData(); }
       } catch (error) { setMessage('❌ Hubungan ke server Backend terputus.'); }
     }
   };
 
+  // 5. Menyaring Data Tabel
   const displayedTransactions = transactions.filter((t) => {
     const d = new Date(t.date);
     const formatTahunBulan = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -153,6 +161,7 @@ function App() {
     return matchWaktu && matchType && matchMethod && matchCategory;
   });
 
+  // 6. Fungsi Ekspor Excel
   const exportToExcel = () => {
     if (displayedTransactions.length === 0) {
       alert("Tidak ada data transaksi pada periode filter ini untuk diekspor!");
@@ -194,6 +203,8 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-start p-6 space-y-6">
+      
+      {/* 📅 ACUAN FILTER GLOBAL */}
       <div className="w-full max-w-4xl bg-white p-4 rounded-xl shadow-md flex flex-col sm:flex-row items-center justify-between gap-4">
         <div>
           <h2 className="text-md font-bold text-gray-800">📅 Acuan Dashboard Bulanan</h2>
@@ -202,6 +213,7 @@ function App() {
         <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="p-2 border border-gray-300 rounded-lg font-semibold text-blue-600 focus:ring-2 focus:ring-blue-400 bg-gray-50 text-center" />
       </div>
 
+      {/* 📊 DASHBOARD UTAMA AKUNTANSI */}
       <div className="w-full max-w-4xl space-y-4">
         <div className="bg-gray-200/60 p-4 rounded-xl border border-gray-300 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <h3 className="text-xs font-black text-gray-600 uppercase">⏳ SALDO AWAL (Bulan Sebelumnya)</h3>
@@ -216,14 +228,23 @@ function App() {
           <div className="bg-green-50 p-3 rounded-xl border border-green-200">
             <p className="text-gray-500 text-[11px] font-bold uppercase">Pemasukan Bulan Ini</p>
             <p className="text-base font-black text-green-600">Rp {summary.monthIncome.toLocaleString('id-ID')}</p>
+            <div className="text-[10px] text-gray-500 mt-1 flex justify-between border-t border-green-100 pt-1">
+              <span>Cash: Rp {summary.cashIncome.toLocaleString('id-ID')}</span>
+              <span>Bank: Rp {summary.bankIncome.toLocaleString('id-ID')}</span>
+            </div>
           </div>
           <div className="bg-red-50 p-3 rounded-xl border border-red-200">
             <p className="text-gray-400 text-[11px] font-bold uppercase">Pengeluaran Bulan Ini</p>
             <p className="text-base font-black text-red-600">Rp {summary.monthExpense.toLocaleString('id-ID')}</p>
+            <div className="text-[10px] text-gray-400 mt-1 flex justify-between border-t border-red-100 pt-1">
+              <span>Cash: Rp {summary.cashExpense.toLocaleString('id-ID')}</span>
+              <span>Bank: Rp {summary.bankExpense.toLocaleString('id-ID')}</span>
+            </div>
           </div>
-          <div className="bg-blue-50 p-3 rounded-xl border border-blue-200">
+          <div className="bg-blue-50 p-3 rounded-xl border border-blue-200 flex flex-col justify-between">
             <p className="text-blue-700 text-[11px] font-black uppercase">Saldo Berjalan</p>
             <p className={`text-base font-black ${summary.monthNetBalance >= 0 ? 'text-blue-600' : 'text-red-500'}`}>Rp {summary.monthNetBalance.toLocaleString('id-ID')}</p>
+            <div className="text-[10px] text-gray-400 invisible">Spacer</div>
           </div>
         </div>
 
@@ -234,6 +255,7 @@ function App() {
         </div>
       </div>
 
+      {/* 📥 FORM INPUT TRANSAKSI */}
       <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
         <h1 className="text-2xl font-bold text-center text-blue-600 mb-2">Pencatatan Keuangan</h1>
         {message && <div className={`p-3 rounded-lg mb-4 text-sm font-medium text-center ${message.includes('✅') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{message}</div>}
@@ -281,6 +303,7 @@ function App() {
         </form>
       </div>
 
+      {/* 📋 TABEL RIWAYAT TRANSAKSI */}
       <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-4xl overflow-hidden">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4 border-b border-gray-100 pb-3">
           <h2 className="text-xl font-bold text-gray-800">📋 Riwayat Transaksi Keuangan</h2>
