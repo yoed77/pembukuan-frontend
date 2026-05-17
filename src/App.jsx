@@ -13,17 +13,21 @@ function App() {
   const [message, setMessage] = useState('');
   const [formTransactionType, setFormTransactionType] = useState('expense');
 
+  // Filter Periode Bulanan Global (Dashboard Saldo Atas)
   const currentYearMonth = new Date().toISOString().substring(0, 7);
   const [selectedMonth, setSelectedMonth] = useState(currentYearMonth);
 
+  // Filter Waktu Riwayat Tabel
   const [historyPeriodMode, setHistoryPeriodMode] = useState('month'); 
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
+  // Filter Dropdown Jenis, Metode & Kategori
   const [filterType, setFilterType] = useState('all');       
   const [filterMethod, setFilterMethod] = useState('all');   
   const [filterCategory, setFilterCategory] = useState('all'); 
 
+  // State Dashboard Keuangan
   const [summary, setSummary] = useState({ 
     pastCashBalance: 0, pastBankBalance: 0, pastGrandBalance: 0,
     monthIncome: 0, monthExpense: 0, monthNetBalance: 0, 
@@ -32,17 +36,17 @@ function App() {
     finalCashBalance: 0, finalBankBalance: 0, finalGrandBalance: 0
   });
 
-  // Ambil Data dari Server Backend via Ngrok Resmi Mas Yudi (Ditambahkan Headers Bypass)
+  // 1. Ambil Data dari Server Backend via Ngrok
   const fetchData = async () => {
     try {
       const resCat = await fetch('https://voice-eastcoast-platypus.ngrok-free.dev/api/categories', {
-        headers: { 'ngrok-skip-browser-warning': '69420' } // KUNCI UTAMA JALUR BYPASS KATEGORI
+        headers: { 'ngrok-skip-browser-warning': '69420' }
       });
       const dataCat = await resCat.json();
       setCategories(dataCat);
 
       const resTrans = await fetch('https://voice-eastcoast-platypus.ngrok-free.dev/api/transactions', {
-        headers: { 'ngrok-skip-browser-warning': '69420' } // KUNCI UTAMA JALUR BYPASS RIWAYAT
+        headers: { 'ngrok-skip-browser-warning': '69420' }
       });
       const dataTrans = await resTrans.json();
       setTransactions(dataTrans);
@@ -55,17 +59,23 @@ function App() {
     fetchData();
   }, []);
 
+  // Otomatis set kategori pertama agar select box tidak kosong
   useEffect(() => {
     const filteredCats = categories.filter(cat => cat.type === formTransactionType);
-    if (filteredCats.length > 0) setCategoryId(filteredCats[0].id);
+    if (filteredCats.length > 0) {
+      setCategoryId(filteredCats[0].id);
+    } else {
+      setCategoryId('');
+    }
   }, [formTransactionType, categories]);
 
+  // 2. Logika Hitung Akuntansi Kumulatif
   useEffect(() => {
     let mIncome = 0; let mExpense = 0; let cIncome = 0; let cExpense = 0;
     let bIncome = 0; let bExpense = 0; let pCash = 0; let pBank = 0;
 
     transactions.forEach((t) => {
-      const nominal = parseFloat(t.amount);
+      const nominal = parseFloat(t.amount || 0);
       const d = new Date(t.date);
       const formatTahunBulan = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 
@@ -99,21 +109,25 @@ function App() {
   }, [transactions, selectedMonth]);
 
   const filteredCategoriesForForm = categories.filter(cat => cat.type === formTransactionType);
-  const inputAmount = amount ? parseFloat(amount) : 0;
   
-  let isSaldoMinus = false;
-  if (formTransactionType === 'expense') {
-    if (paymentMethod === 'cash' && inputAmount > summary.finalCashBalance) isSaldoMinus = true;
-    else if (paymentMethod === 'bank' && inputAmount > summary.finalBankBalance) isSaldoMinus = true;
-  }
-
+  // 3. Fungsi Simpan Transaksi Baru (Sudah Diperbaiki Struktur Kolomnya agar Sinkron ke Supabase)
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (isSaldoMinus) return; 
+    
+    if (!date || !categoryId || !amount) {
+      alert('Mohon isi Tanggal, Kategori, dan Jumlah Uang terlebih dahulu!');
+      return;
+    }
+
     const transaksiBaru = {
-      category_id: parseInt(categoryId), amount: inputAmount, description,
-      receipt_url: receiptUrl || null, date, payment_method: paymentMethod
+      category_id: parseInt(categoryId), 
+      amount: parseFloat(amount), 
+      description: description || 'Tanpa keterangan',
+      receipt_url: receiptUrl || null, 
+      date: date, 
+      payment_method: paymentMethod
     };
+
     try {
       const response = await fetch('https://voice-eastcoast-platypus.ngrok-free.dev/api/transactions', {
         method: 'POST',
@@ -123,14 +137,26 @@ function App() {
         },
         body: JSON.stringify(transaksiBaru),
       });
+
       if (response.ok) {
         setMessage('✅ Catatan Keuangan Berhasil Disimpan!');
-        setAmount(''); setDescription(''); setReceiptUrl(''); setDate(''); setPaymentMethod('cash'); setFormTransactionType('expense');
-        setTimeout(() => fetchData(), 500);
+        setAmount(''); 
+        setDescription(''); 
+        setReceiptUrl(''); 
+        setDate('');
+        // Segarkan data tabel dan dashboard
+        fetchData();
+        // Hapus pesan sukses setelah 3 detik
+        setTimeout(() => setMessage(''), 3000);
+      } else {
+        setMessage('❌ Gagal menyimpan, periksa inputan Anda.');
       }
-    } catch (error) { setMessage('❌ Hubungan ke server Backend terputus.'); }
+    } catch (error) { 
+      setMessage('❌ Hubungan ke server Backend terputus.'); 
+    }
   };
 
+  // 4. Fungsi Hapus Transaksi
   const handleDelete = async (id) => {
     if (window.confirm('Apakah Anda yakin ingin menghapus catatan ini?')) {
       try {
@@ -138,11 +164,18 @@ function App() {
           method: 'DELETE',
           headers: { 'ngrok-skip-browser-warning': '69420' }
         });
-        if (response.ok) { setMessage('🗑️ Catatan keuangan berhasil dihapus!'); fetchData(); }
-      } catch (error) { setMessage('❌ Hubungan ke server Backend terputus.'); }
+        if (response.ok) { 
+          setMessage('🗑️ Catatan keuangan berhasil dihapus!'); 
+          fetchData();
+          setTimeout(() => setMessage(''), 3000);
+        }
+      } catch (error) { 
+        setMessage('❌ Hubungan ke server Backend terputus.'); 
+      }
     }
   };
 
+  // 5. Menyaring Data Tabel
   const displayedTransactions = transactions.filter((t) => {
     const d = new Date(t.date);
     const formatTahunBulan = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -188,6 +221,8 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-start p-6 space-y-6">
+      
+      {/* 📅 ACUAN FILTER GLOBAL */}
       <div className="w-full max-w-4xl bg-white p-4 rounded-xl shadow-md flex flex-col sm:flex-row items-center justify-between gap-4">
         <div>
           <h2 className="text-md font-bold text-gray-800">📅 Acuan Dashboard Bulanan</h2>
@@ -196,6 +231,7 @@ function App() {
         <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="p-2 border border-gray-300 rounded-lg font-semibold text-blue-600 bg-gray-50 text-center" />
       </div>
 
+      {/* 📊 DASHBOARD UTAMA AKUNTANSI */}
       <div className="w-full max-w-4xl space-y-4">
         <div className="bg-gray-200/60 p-4 rounded-xl border border-gray-300 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <h3 className="text-xs font-black text-gray-600 uppercase">⏳ SALDO AWAL (Bulan Sebelumnya)</h3>
@@ -223,7 +259,6 @@ function App() {
               <span>Bank: Rp {summary.bankExpense.toLocaleString('id-ID')}</span>
             </div>
           </div>
-          {/* KOTAK BIRU DENGAN DETAIL RINCIAN SEPERTI PESANAN MAS YUDI */}
           <div className="bg-blue-50 p-3 rounded-xl border border-blue-200">
             <p className="text-blue-700 text-[11px] font-black uppercase">Saldo Berjalan</p>
             <p className={`text-base font-black ${summary.monthNetBalance >= 0 ? 'text-blue-600' : 'text-red-500'}`}>Rp {summary.monthNetBalance.toLocaleString('id-ID')}</p>
@@ -241,9 +276,10 @@ function App() {
         </div>
       </div>
 
+      {/* 📥 FORM INPUT TRANSAKSI */}
       <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
         <h1 className="text-2xl font-bold text-center text-blue-600 mb-2">Pencatatan Keuangan</h1>
-        {message && <div className="p-3 rounded-lg mb-4 text-sm font-medium text-center bg-green-100 text-green-700">{message}</div>}
+        {message && <div className={`p-3 rounded-lg mb-4 text-sm font-medium text-center ${message.includes('✅') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{message}</div>}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Tanggal</label>
@@ -259,7 +295,8 @@ function App() {
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Kategori</label>
             <select value={categoryId} required onChange={(e) => setCategoryId(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg bg-white">
-              {filteredCategoriesForForm.map(cat => <option key={cat.id} value={cat.id}>📁 {cat.name}</option>)}
+              <option value="">-- Pilih Kategori --</option>
+              {filteredCategoriesForForm.map(cat => <option key={cat.id} value={cat.id}>📁 {cat.name || cat.nama_kategori}</option>)}
             </select>
           </div>
           <div>
@@ -271,7 +308,7 @@ function App() {
           </div>
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Jumlah Uang (Rp)</label>
-            <input type="number" required value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg" />
+            <input type="number" required placeholder="Contoh: 50000" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg" />
           </div>
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Keterangan</label>
@@ -281,10 +318,13 @@ function App() {
             <label className="block text-sm font-semibold text-gray-700 mb-1">Link Foto Nota</label>
             <input type="url" value={receiptUrl} onChange={(e) => setReceiptUrl(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg" />
           </div>
-          <button type="submit" className="w-full font-semibold p-3 rounded-lg bg-blue-600 text-white">Simpan Catatan</button>
+          <button type="submit" className="w-full font-semibold p-3 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition">
+            Simpan Catatan
+          </button>
         </form>
       </div>
 
+      {/* TABEL RIWAYAT TRANSAKSI */}
       <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-4xl overflow-hidden">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4 border-b border-gray-100 pb-3">
           <h2 className="text-xl font-bold text-gray-800">📋 Riwayat Transaksi Keuangan</h2>
@@ -313,7 +353,7 @@ function App() {
         <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Jenis Kas</label><select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="w-full p-2 text-sm border border-gray-300 rounded-md bg-white font-semibold text-gray-700"><option value="all">Semua</option><option value="income">Pemasukan</option><option value="expense">Pengeluaran</option></select></div>
           <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Metode</label><select value={filterMethod} onChange={(e) => setFilterMethod(e.target.value)} className="w-full p-2 text-sm border border-gray-300 rounded-md bg-white font-semibold text-gray-700"><option value="all">Semua</option><option value="cash">💵 Cash</option><option value="bank">🏦 Bank</option></select></div>
-          <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nama Kategori</label><select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="w-full p-2 text-sm border border-gray-300 rounded-md bg-white font-semibold text-gray-700"><option value="all">Semua Kategori</option>{Array.from(new Set(categories.map(c => c.name))).map((catName, index) => <option key={index} value={catName}>📁 {catName}</option>)}</select></div>
+          <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nama Kategori</label><select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="w-full p-2 text-sm border border-gray-300 rounded-md bg-white font-semibold text-gray-700"><option value="all">Semua Kategori</option>{Array.from(new Set(categories.map(c => c.name || c.nama_kategori))).map((catName, index) => <option key={index} value={catName}>📁 {catName}</option>)}</select></div>
         </div>
         
         <div className="overflow-x-auto">
