@@ -27,15 +27,16 @@ function App() {
   const [filterMethod, setFilterMethod] = useState('all');   
   const [filterCategory, setFilterCategory] = useState('all'); 
 
-  // State Dashboard Keuangan
+  // State Dashboard Keuangan (Sudah Ditambahkan Rincian Saldo Berjalan)
   const [summary, setSummary] = useState({ 
     pastCashBalance: 0, pastBankBalance: 0, pastGrandBalance: 0,
     monthIncome: 0, monthExpense: 0, monthNetBalance: 0, 
     cashIncome: 0, cashExpense: 0, bankIncome: 0, bankExpense: 0,
+    monthCashNet: 0, monthBankNet: 0, // <-- BARU: State sub-saldo berjalan
     finalCashBalance: 0, finalBankBalance: 0, finalGrandBalance: 0
   });
 
-  // 1. Ambil Data dari Server Backend via Ngrok
+  // 1. Ambil Data dari Server Backend via Ngrok Resmi Mas Yudi
   const fetchData = async () => {
     try {
       const resCat = await fetch('https://voice-eastcoast-platypus.ngrok-free.dev/api/categories');
@@ -91,6 +92,8 @@ function App() {
       pastCashBalance: pCash, pastBankBalance: pBank, pastGrandBalance: pCash + pBank,
       monthIncome: mIncome, monthExpense: mExpense, monthNetBalance: mIncome - mExpense,
       cashIncome: cIncome, cashExpense: cExpense, bankIncome: bIncome, bankExpense: bExpense,
+      monthCashNet: cIncome - cExpense, // <-- BARU: Hitung selisih cash bulan berjalan
+      monthBankNet: bIncome - bExpense, // <-- BARU: Hitung selisih bank bulan berjalan
       finalCashBalance: pCash + (cIncome - cExpense), finalBankBalance: pBank + (bIncome - bExpense),
       finalGrandBalance: (pCash + pBank) + (mIncome - mExpense)
     });
@@ -241,10 +244,14 @@ function App() {
               <span>Bank: Rp {summary.bankExpense.toLocaleString('id-ID')}</span>
             </div>
           </div>
-          <div className="bg-blue-50 p-3 rounded-xl border border-blue-200 flex flex-col justify-between">
+          {/* 🟦 UPDATE SINKRONISASI KOTAK SALDO BERJALAN DENGAN DETAIL CASH & BANK */}
+          <div className="bg-blue-50 p-3 rounded-xl border border-blue-200">
             <p className="text-blue-700 text-[11px] font-black uppercase">Saldo Berjalan</p>
             <p className={`text-base font-black ${summary.monthNetBalance >= 0 ? 'text-blue-600' : 'text-red-500'}`}>Rp {summary.monthNetBalance.toLocaleString('id-ID')}</p>
-            <div className="text-[10px] text-gray-400 invisible">Spacer</div>
+            <div className="text-[10px] text-blue-500 mt-1 flex justify-between border-t border-blue-100 pt-1">
+              <span>Cash: Rp {summary.monthCashNet.toLocaleString('id-ID')}</span>
+              <span>Bank: Rp {summary.monthBankNet.toLocaleString('id-ID')}</span>
+            </div>
           </div>
         </div>
 
