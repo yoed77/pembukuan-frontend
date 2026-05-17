@@ -13,21 +13,17 @@ function App() {
   const [message, setMessage] = useState('');
   const [formTransactionType, setFormTransactionType] = useState('expense');
 
-  // Filter Periode Bulanan Global (Untuk Dashboard Saldo Atas)
   const currentYearMonth = new Date().toISOString().substring(0, 7);
   const [selectedMonth, setSelectedMonth] = useState(currentYearMonth);
 
-  // ================= BARU: STATE FILTER WAKTU UNTUK TABEL RIWAYAT =================
-  const [historyPeriodMode, setHistoryPeriodMode] = useState('month'); // PILIHAN: 'all', 'month', 'custom'
+  const [historyPeriodMode, setHistoryPeriodMode] = useState('month'); 
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
-  // State untuk Panel Filter Dropdown Kategori & Metode
   const [filterType, setFilterType] = useState('all');       
   const [filterMethod, setFilterMethod] = useState('all');   
   const [filterCategory, setFilterCategory] = useState('all'); 
 
-  // State Dashboard Akuntansi
   const [summary, setSummary] = useState({ 
     pastCashBalance: 0, pastBankBalance: 0, pastGrandBalance: 0,
     monthIncome: 0, monthExpense: 0, monthNetBalance: 0, 
@@ -35,14 +31,14 @@ function App() {
     finalCashBalance: 0, finalBankBalance: 0, finalGrandBalance: 0
   });
 
-  // 1. Mengambil Data Awal dari Server Backend API
+  // 1. Mengambil Data Menggunakan HTTPS (Pipa Aman)
   const fetchData = async () => {
     try {
-      const resCat = await fetch('http://lzagr-158-140-171-93.run.pinggy-free.link/api/categories');
+      const resCat = await fetch('https://lzagr-158-140-171-93.run.pinggy-free.link/api/categories');
       const dataCat = await resCat.json();
       setCategories(dataCat);
 
-      const resTrans = await fetch('http://lzagr-158-140-171-93.run.pinggy-free.link/api/transactions');
+      const resTrans = await fetch('https://lzagr-158-140-171-93.run.pinggy-free.link/api/transactions');
       const dataTrans = await resTrans.json();
       setTransactions(dataTrans);
     } catch (err) {
@@ -59,7 +55,6 @@ function App() {
     if (filteredCats.length > 0) setCategoryId(filteredCats[0].id);
   }, [formTransactionType, categories]);
 
-  // 2. Logika Hitung Akuntansi Kumulatif (Dashboard Atas Mengikuti Acuan Bulan Global)
   useEffect(() => {
     let mIncome = 0; let mExpense = 0; let cIncome = 0; let cExpense = 0;
     let bIncome = 0; let bExpense = 0; let pCash = 0; let pBank = 0;
@@ -129,31 +124,28 @@ function App() {
   const handleDelete = async (id) => {
     if (window.confirm('Apakah Anda yakin ingin menghapus catatan ini?')) {
       try {
-        const response = await fetch(`http://lzagr-158-140-171-93.run.pinggy-free.link/api/transactions/${id}`, { method: 'DELETE' });
+        const response = await fetch(`https://lzagr-158-140-171-93.run.pinggy-free.link/api/transactions/${id}`, { method: 'DELETE' });
         if (response.ok) { setMessage('🗑️ Catatan keuangan berhasil dihapus!'); fetchData(); }
       } catch (error) { setMessage('❌ Hubungan ke server Backend terputus.'); }
     }
   };
 
-  // ================= 3. LOGIKA MULTI-FILTER PENYARINGAN DATA TABEL TERBARU =================
   const displayedTransactions = transactions.filter((t) => {
     const d = new Date(t.date);
     const formatTahunBulan = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    const formatTanggalLokal = t.date.split('T')[0]; // Format: "YYYY-MM-DD"
+    const formatTanggalLokal = t.date.split('T')[0];
 
-    // A. Validasi Filter Waktu Jangka Pendek/Panjang
     let matchWaktu = false;
     if (historyPeriodMode === 'all') {
-      matchWaktu = true; // Lolos semua tanggal
+      matchWaktu = true;
     } else if (historyPeriodMode === 'month') {
-      matchWaktu = formatTahunBulan === selectedMonth; // Hanya bulan berjalan
+      matchWaktu = formatTahunBulan === selectedMonth;
     } else if (historyPeriodMode === 'custom') {
       const start = customStartDate || '1970-01-01';
       const end = customEndDate || '9999-12-31';
-      matchWaktu = formatTanggalLokal >= start && formatTanggalLokal <= end; // Rentang tanggal kustom
+      matchWaktu = formatTanggalLokal >= start && formatTanggalLokal <= end;
     }
 
-    // B. Validasi Filter Tambahan (Jenis, Metode, Kategori)
     const matchType = filterType === 'all' || t.category_type === filterType;
     const matchMethod = filterMethod === 'all' || t.payment_method === filterMethod;
     const matchCategory = filterCategory === 'all' || t.category_name === filterCategory;
@@ -161,7 +153,6 @@ function App() {
     return matchWaktu && matchType && matchMethod && matchCategory;
   });
 
-  // ================= 4. FUNGSI EKSPOR EXCEL VERSI UPDATE TOTAL FORMULA =================
   const exportToExcel = () => {
     if (displayedTransactions.length === 0) {
       alert("Tidak ada data transaksi pada periode filter ini untuk diekspor!");
@@ -203,8 +194,6 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-start p-6 space-y-6">
-      
-      {/* FILTER ACUAN DASHBOARD ATAS */}
       <div className="w-full max-w-4xl bg-white p-4 rounded-xl shadow-md flex flex-col sm:flex-row items-center justify-between gap-4">
         <div>
           <h2 className="text-md font-bold text-gray-800">📅 Acuan Dashboard Bulanan</h2>
@@ -213,7 +202,6 @@ function App() {
         <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="p-2 border border-gray-300 rounded-lg font-semibold text-blue-600 focus:ring-2 focus:ring-blue-400 bg-gray-50 text-center" />
       </div>
 
-      {/* DASHBOARD AKUNTANSI KUMULATIF */}
       <div className="w-full max-w-4xl space-y-4">
         <div className="bg-gray-200/60 p-4 rounded-xl border border-gray-300 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <h3 className="text-xs font-black text-gray-600 uppercase">⏳ SALDO AWAL (Bulan Sebelumnya)</h3>
@@ -246,7 +234,6 @@ function App() {
         </div>
       </div>
 
-      {/* FORM INPUT TRANSAKSI */}
       <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
         <h1 className="text-2xl font-bold text-center text-blue-600 mb-2">Pencatatan Keuangan</h1>
         {message && <div className={`p-3 rounded-lg mb-4 text-sm font-medium text-center ${message.includes('✅') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{message}</div>}
@@ -294,67 +281,44 @@ function App() {
         </form>
       </div>
 
-      {/* TABEL RIWAYAT TRANSAKSI DENGAN ADVANCED TIME FILTERS */}
       <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-4xl overflow-hidden">
-        
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4 border-b border-gray-100 pb-3">
           <h2 className="text-xl font-bold text-gray-800">📋 Riwayat Transaksi Keuangan</h2>
-          <button
-            onClick={exportToExcel}
-            className="w-full sm:w-auto flex items-center justify-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow transition duration-150"
-          >
+          <button onClick={exportToExcel} className="w-full sm:w-auto flex items-center justify-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow transition duration-150">
             <span>📥 Export ke Excel</span>
           </button>
         </div>
 
-        {/* PANEL KONTROL FILTER WAKTU BARU (PILIHAN PERIODE) */}
         <div className="bg-blue-50/70 p-4 rounded-xl border border-blue-200 flex flex-col md:flex-row items-start md:items-center gap-4 mb-4">
           <div className="w-full md:w-1/3">
             <label className="block text-xs font-black text-blue-700 uppercase mb-1">Rentang Waktu Tabel</label>
-            <select
-              value={historyPeriodMode}
-              onChange={(e) => setHistoryPeriodMode(e.target.value)}
-              className="w-full p-2 text-sm border border-blue-300 rounded-md bg-white font-bold text-gray-700 focus:ring-2 focus:ring-blue-400"
-            >
+            <select value={historyPeriodMode} onChange={(e) => setHistoryPeriodMode(e.target.value)} className="w-full p-2 text-sm border border-blue-300 rounded-md bg-white font-bold text-gray-700 focus:ring-2 focus:ring-blue-400">
               <option value="month">📅 Hanya Bulan Berjalan</option>
               <option value="all">♾️ Semua Periode (Tanpa Batas)</option>
               <option value="custom">🛠️ Periode Tertentu (Kustom Tanggal)</option>
             </select>
           </div>
 
-          {/* INPUT FORM TANGGAL KUSTOM KELUAR JIKA MODE CUSTOM DIPILIH */}
           {historyPeriodMode === 'custom' && (
             <div className="w-full md:w-2/3 grid grid-cols-2 gap-3 animate-fadeIn">
               <div>
                 <label className="block text-xs font-bold text-gray-500 mb-1">Dari Tanggal</label>
-                <input 
-                  type="date" 
-                  value={customStartDate} 
-                  onChange={(e) => setCustomStartDate(e.target.value)} 
-                  className="w-full p-1.5 text-sm border border-gray-300 rounded-md"
-                />
+                <input type="date" value={customStartDate} onChange={(e) => setCustomStartDate(e.target.value)} className="w-full p-1.5 text-sm border border-gray-300 rounded-md" />
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-500 mb-1">Sampai Tanggal</label>
-                <input 
-                  type="date" 
-                  value={customEndDate} 
-                  onChange={(e) => setCustomEndDate(e.target.value)} 
-                  className="w-full p-1.5 text-sm border border-gray-300 rounded-md"
-                />
+                <input type="date" value={customEndDate} onChange={(e) => setCustomEndDate(e.target.value)} className="w-full p-1.5 text-sm border border-gray-300 rounded-md" />
               </div>
             </div>
           )}
         </div>
 
-        {/* PANEL FILTER KLASIK (JENIS, METODE, KATEGORI) */}
         <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Jenis Kas</label><select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="w-full p-2 text-sm border border-gray-300 rounded-md bg-white font-semibold text-gray-700"><option value="all">Semua</option><option value="income">Pemasukan</option><option value="expense">Pengeluaran</option></select></div>
           <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Metode</label><select value={filterMethod} onChange={(e) => setFilterMethod(e.target.value)} className="w-full p-2 text-sm border border-gray-300 rounded-md bg-white font-semibold text-gray-700"><option value="all">Semua</option><option value="cash">💵 Cash</option><option value="bank">🏦 Bank</option></select></div>
           <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nama Kategori</label><select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="w-full p-2 text-sm border border-gray-300 rounded-md bg-white font-semibold text-gray-700"><option value="all">Semua Kategori</option>{Array.from(new Set(categories.map(c => c.name))).map((catName, index) => <option key={index} value={catName}>📁 {catName}</option>)}</select></div>
         </div>
         
-        {/* TABEL DATA */}
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -381,7 +345,6 @@ function App() {
           </table>
         </div>
       </div>
-
     </div>
   );
 }
