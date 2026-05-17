@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import * as XLSX from 'xlsx';
 
 function App() {
   const [categories, setCategories] = useState([]);
@@ -191,8 +190,9 @@ function App() {
       </div>
 
       <div className="w-full max-w-4xl space-y-4">
+        {/* SALDO AWAL */}
         <div className="bg-gray-200/60 p-4 rounded-xl border border-gray-300 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <h3 className="text-xs font-black text-gray-600 uppercase">⏳ SALDO AWAL</h3>
+          <h3 className="text-xs font-black text-gray-600 uppercase">⏳ SALDO AWAL (BULAN SEBELUMNYA)</h3>
           <div className="flex flex-wrap gap-4 text-xs font-bold text-gray-700">
             <span>💵 Cash: <span className="text-amber-700">Rp {summary.pastCashBalance.toLocaleString('id-ID')}</span></span>
             <span>🏦 Bank: <span className="text-sky-700">Rp {summary.pastBankBalance.toLocaleString('id-ID')}</span></span>
@@ -200,6 +200,7 @@ function App() {
           </div>
         </div>
 
+        {/* SALDO BULAN BERJALAN */}
         <div className="bg-white p-5 rounded-2xl shadow-md border-t-4 border-blue-500 grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="bg-green-50 p-3 rounded-xl border border-green-200">
             <p className="text-gray-500 text-[11px] font-bold uppercase">Pemasukan Bulan Ini</p>
@@ -226,8 +227,25 @@ function App() {
             </div>
           </div>
         </div>
+
+        {/* KOTAK SALDO AKHIR FINAL (YANG SEMPAT HILANG - SEKARANG SUDAH KEMBALI) */}
+        <div className="bg-slate-800 text-white p-4 rounded-xl shadow-md grid grid-cols-1 sm:grid-cols-3 gap-4 border border-slate-700">
+          <div>
+            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">💵 SALDO AKHIR CASH</p>
+            <p className="text-base font-black text-amber-400">Rp {summary.finalCashBalance.toLocaleString('id-ID')}</p>
+          </div>
+          <div>
+            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">🏦 SALDO AKHIR BANK</p>
+            <p className="text-base font-black text-sky-400">Rp {summary.finalBankBalance.toLocaleString('id-ID')}</p>
+          </div>
+          <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-700 flex flex-col justify-center">
+            <p className="text-blue-400 text-[10px] font-black uppercase tracking-wider">💎 TOTAL SALDO AKHIR FINAL</p>
+            <p className="text-lg font-black text-white">Rp {summary.finalGrandBalance.toLocaleString('id-ID')}</p>
+          </div>
+        </div>
       </div>
 
+      {/* FORM PENCATATAN KEUANGAN */}
       <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
         <h1 className="text-2xl font-bold text-center text-blue-600 mb-2">Pencatatan Keuangan</h1>
         {message && <div className="p-3 rounded-lg mb-4 text-sm font-medium text-center bg-blue-100 text-blue-700">{message}</div>}
@@ -271,6 +289,7 @@ function App() {
         </form>
       </div>
 
+      {/* TABEL RIWAYAT TRANSAKSI */}
       <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-4xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
