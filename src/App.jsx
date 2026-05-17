@@ -13,37 +13,37 @@ function App() {
   const [message, setMessage] = useState('');
   const [formTransactionType, setFormTransactionType] = useState('expense');
 
-  // Filter Periode Bulanan Global (Dashboard Saldo Atas)
   const currentYearMonth = new Date().toISOString().substring(0, 7);
   const [selectedMonth, setSelectedMonth] = useState(currentYearMonth);
 
-  // Filter Waktu Riwayat Tabel
   const [historyPeriodMode, setHistoryPeriodMode] = useState('month'); 
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
-  // Filter Dropdown Jenis, Metode & Kategori
   const [filterType, setFilterType] = useState('all');       
   const [filterMethod, setFilterMethod] = useState('all');   
   const [filterCategory, setFilterCategory] = useState('all'); 
 
-  // State Dashboard Keuangan (Sudah Ditambahkan Rincian Saldo Berjalan)
   const [summary, setSummary] = useState({ 
     pastCashBalance: 0, pastBankBalance: 0, pastGrandBalance: 0,
     monthIncome: 0, monthExpense: 0, monthNetBalance: 0, 
     cashIncome: 0, cashExpense: 0, bankIncome: 0, bankExpense: 0,
-    monthCashNet: 0, monthBankNet: 0, // <-- BARU: State sub-saldo berjalan
+    monthCashNet: 0, monthBankNet: 0, 
     finalCashBalance: 0, finalBankBalance: 0, finalGrandBalance: 0
   });
 
-  // 1. Ambil Data dari Server Backend via Ngrok Resmi Mas Yudi
+  // Ambil Data dari Server Backend via Ngrok Resmi Mas Yudi (Ditambahkan Headers Bypass)
   const fetchData = async () => {
     try {
-      const resCat = await fetch('https://voice-eastcoast-platypus.ngrok-free.dev/api/categories');
+      const resCat = await fetch('https://voice-eastcoast-platypus.ngrok-free.dev/api/categories', {
+        headers: { 'ngrok-skip-browser-warning': '69420' } // KUNCI UTAMA JALUR BYPASS KATEGORI
+      });
       const dataCat = await resCat.json();
       setCategories(dataCat);
 
-      const resTrans = await fetch('https://voice-eastcoast-platypus.ngrok-free.dev/api/transactions');
+      const resTrans = await fetch('https://voice-eastcoast-platypus.ngrok-free.dev/api/transactions', {
+        headers: { 'ngrok-skip-browser-warning': '69420' } // KUNCI UTAMA JALUR BYPASS RIWAYAT
+      });
       const dataTrans = await resTrans.json();
       setTransactions(dataTrans);
     } catch (err) {
@@ -60,7 +60,6 @@ function App() {
     if (filteredCats.length > 0) setCategoryId(filteredCats[0].id);
   }, [formTransactionType, categories]);
 
-  // 2. Logika Hitung Akuntansi Kumulatif
   useEffect(() => {
     let mIncome = 0; let mExpense = 0; let cIncome = 0; let cExpense = 0;
     let bIncome = 0; let bExpense = 0; let pCash = 0; let pBank = 0;
@@ -92,8 +91,8 @@ function App() {
       pastCashBalance: pCash, pastBankBalance: pBank, pastGrandBalance: pCash + pBank,
       monthIncome: mIncome, monthExpense: mExpense, monthNetBalance: mIncome - mExpense,
       cashIncome: cIncome, cashExpense: cExpense, bankIncome: bIncome, bankExpense: bExpense,
-      monthCashNet: cIncome - cExpense, // <-- BARU: Hitung selisih cash bulan berjalan
-      monthBankNet: bIncome - bExpense, // <-- BARU: Hitung selisih bank bulan berjalan
+      monthCashNet: cIncome - cExpense, 
+      monthBankNet: bIncome - bExpense, 
       finalCashBalance: pCash + (cIncome - cExpense), finalBankBalance: pBank + (bIncome - bExpense),
       finalGrandBalance: (pCash + pBank) + (mIncome - mExpense)
     });
@@ -108,7 +107,6 @@ function App() {
     else if (paymentMethod === 'bank' && inputAmount > summary.finalBankBalance) isSaldoMinus = true;
   }
 
-  // 3. Fungsi Simpan Transaksi Baru
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (isSaldoMinus) return; 
@@ -119,7 +117,10 @@ function App() {
     try {
       const response = await fetch('https://voice-eastcoast-platypus.ngrok-free.dev/api/transactions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': '69420'
+        },
         body: JSON.stringify(transaksiBaru),
       });
       if (response.ok) {
@@ -130,17 +131,18 @@ function App() {
     } catch (error) { setMessage('❌ Hubungan ke server Backend terputus.'); }
   };
 
-  // 4. Fungsi Hapus Transaksi
   const handleDelete = async (id) => {
     if (window.confirm('Apakah Anda yakin ingin menghapus catatan ini?')) {
       try {
-        const response = await fetch(`https://voice-eastcoast-platypus.ngrok-free.dev/api/transactions/${id}`, { method: 'DELETE' });
+        const response = await fetch(`https://voice-eastcoast-platypus.ngrok-free.dev/api/transactions/${id}`, { 
+          method: 'DELETE',
+          headers: { 'ngrok-skip-browser-warning': '69420' }
+        });
         if (response.ok) { setMessage('🗑️ Catatan keuangan berhasil dihapus!'); fetchData(); }
       } catch (error) { setMessage('❌ Hubungan ke server Backend terputus.'); }
     }
   };
 
-  // 5. Menyaring Data Tabel
   const displayedTransactions = transactions.filter((t) => {
     const d = new Date(t.date);
     const formatTahunBulan = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -164,13 +166,11 @@ function App() {
     return matchWaktu && matchType && matchMethod && matchCategory;
   });
 
-  // 6. Fungsi Ekspor Excel
   const exportToExcel = () => {
     if (displayedTransactions.length === 0) {
       alert("Tidak ada data transaksi pada periode filter ini untuk diekspor!");
       return;
     }
-
     const dataUntukExcel = displayedTransactions.map((t) => ({
       'Tanggal': new Date(t.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }),
       'Jenis': t.category_type === 'income' ? 'Pemasukan' : 'Pengeluaran',
@@ -182,41 +182,20 @@ function App() {
 
     const worksheet = XLSX.utils.json_to_sheet(dataUntukExcel);
     const workbook = XLSX.utils.book_new();
-
-    const totalDataBaris = dataUntukExcel.length;
-    const barisPemasukan = totalDataBaris + 3; 
-    const barisPengeluaran = totalDataBaris + 4;
-
-    XLSX.utils.sheet_add_aoa(worksheet, [["TOTAL PEMASUKAN"]], { origin: `A${barisPemasukan}` });
-    XLSX.utils.sheet_add_aoa(worksheet, [["TOTAL PENGELUARAN"]], { origin: `A${barisPengeluaran}` });
-
-    worksheet[`F${barisPemasukan}`] = { 
-      t: 'n', f: `SUMIF(B2:B${totalDataBaris + 1}, "Pemasukan", F2:F${totalDataBaris + 1})` 
-    };
-    worksheet[`F${barisPengeluaran}`] = { 
-      t: 'n', f: `SUMIF(B2:B${totalDataBaris + 1}, "Pengeluaran", F2:F${totalDataBaris + 1})` 
-    };
-
     XLSX.utils.book_append_sheet(workbook, worksheet, "Laporan Keuangan");
-    const max_widths = [ {wch: 18}, {wch: 15}, {wch: 18}, {wch: 12}, {wch: 35}, {wch: 18} ];
-    worksheet['!cols'] = max_widths;
-
     XLSX.writeFile(workbook, `Laporan_Keuangan_Terfilter.xlsx`);
   };
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-start p-6 space-y-6">
-      
-      {/* 📅 ACUAN FILTER GLOBAL */}
       <div className="w-full max-w-4xl bg-white p-4 rounded-xl shadow-md flex flex-col sm:flex-row items-center justify-between gap-4">
         <div>
           <h2 className="text-md font-bold text-gray-800">📅 Acuan Dashboard Bulanan</h2>
           <p className="text-xs text-gray-500">Menentukan perhitungan Saldo Awal & Saldo Berjalan di kotak atas</p>
         </div>
-        <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="p-2 border border-gray-300 rounded-lg font-semibold text-blue-600 focus:ring-2 focus:ring-blue-400 bg-gray-50 text-center" />
+        <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="p-2 border border-gray-300 rounded-lg font-semibold text-blue-600 bg-gray-50 text-center" />
       </div>
 
-      {/* 📊 DASHBOARD UTAMA AKUNTANSI */}
       <div className="w-full max-w-4xl space-y-4">
         <div className="bg-gray-200/60 p-4 rounded-xl border border-gray-300 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <h3 className="text-xs font-black text-gray-600 uppercase">⏳ SALDO AWAL (Bulan Sebelumnya)</h3>
@@ -244,7 +223,7 @@ function App() {
               <span>Bank: Rp {summary.bankExpense.toLocaleString('id-ID')}</span>
             </div>
           </div>
-          {/* 🟦 UPDATE SINKRONISASI KOTAK SALDO BERJALAN DENGAN DETAIL CASH & BANK */}
+          {/* KOTAK BIRU DENGAN DETAIL RINCIAN SEPERTI PESANAN MAS YUDI */}
           <div className="bg-blue-50 p-3 rounded-xl border border-blue-200">
             <p className="text-blue-700 text-[11px] font-black uppercase">Saldo Berjalan</p>
             <p className={`text-base font-black ${summary.monthNetBalance >= 0 ? 'text-blue-600' : 'text-red-500'}`}>Rp {summary.monthNetBalance.toLocaleString('id-ID')}</p>
@@ -262,10 +241,9 @@ function App() {
         </div>
       </div>
 
-      {/* 📥 FORM INPUT TRANSAKSI */}
       <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
         <h1 className="text-2xl font-bold text-center text-blue-600 mb-2">Pencatatan Keuangan</h1>
-        {message && <div className={`p-3 rounded-lg mb-4 text-sm font-medium text-center ${message.includes('✅') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{message}</div>}
+        {message && <div className="p-3 rounded-lg mb-4 text-sm font-medium text-center bg-green-100 text-green-700">{message}</div>}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Tanggal</label>
@@ -293,8 +271,7 @@ function App() {
           </div>
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Jumlah Uang (Rp)</label>
-            <input type="number" required value={amount} onChange={(e) => setAmount(e.target.value)} className={`w-full p-2.5 border rounded-lg ${isSaldoMinus ? 'border-red-500 bg-red-50' : 'border-gray-300'}`} />
-            {isSaldoMinus && <p className="text-red-500 text-xs font-bold mt-1.5 animate-pulse">❌ Gagal! Saldo tidak mencukupi.</p>}
+            <input type="number" required value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg" />
           </div>
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Keterangan</label>
@@ -304,17 +281,14 @@ function App() {
             <label className="block text-sm font-semibold text-gray-700 mb-1">Link Foto Nota</label>
             <input type="url" value={receiptUrl} onChange={(e) => setReceiptUrl(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg" />
           </div>
-          <button type="submit" disabled={isSaldoMinus} className={`w-full font-semibold p-3 rounded-lg ${isSaldoMinus ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-blue-600 text-white'}`}>
-            {isSaldoMinus ? 'Saldo Tidak Mencukupi' : 'Simpan Catatan'}
-          </button>
+          <button type="submit" className="w-full font-semibold p-3 rounded-lg bg-blue-600 text-white">Simpan Catatan</button>
         </form>
       </div>
 
-      {/* 📋 TABEL RIWAYAT TRANSAKSI */}
       <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-4xl overflow-hidden">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4 border-b border-gray-100 pb-3">
           <h2 className="text-xl font-bold text-gray-800">📋 Riwayat Transaksi Keuangan</h2>
-          <button onClick={exportToExcel} className="w-full sm:w-auto flex items-center justify-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow transition duration-150">
+          <button onClick={exportToExcel} className="w-full sm:w-auto flex items-center justify-center space-x-2 bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold text-sm shadow">
             <span>📥 Export ke Excel</span>
           </button>
         </div>
@@ -322,23 +296,16 @@ function App() {
         <div className="bg-blue-50/70 p-4 rounded-xl border border-blue-200 flex flex-col md:flex-row items-start md:items-center gap-4 mb-4">
           <div className="w-full md:w-1/3">
             <label className="block text-xs font-black text-blue-700 uppercase mb-1">Rentang Waktu Tabel</label>
-            <select value={historyPeriodMode} onChange={(e) => setHistoryPeriodMode(e.target.value)} className="w-full p-2 text-sm border border-blue-300 rounded-md bg-white font-bold text-gray-700 focus:ring-2 focus:ring-blue-400">
+            <select value={historyPeriodMode} onChange={(e) => setHistoryPeriodMode(e.target.value)} className="w-full p-2 text-sm border border-blue-300 rounded-md bg-white font-bold text-gray-700">
               <option value="month">📅 Hanya Bulan Berjalan</option>
               <option value="all">♾️ Semua Periode (Tanpa Batas)</option>
               <option value="custom">🛠️ Periode Tertentu (Kustom Tanggal)</option>
             </select>
           </div>
-
           {historyPeriodMode === 'custom' && (
-            <div className="w-full md:w-2/3 grid grid-cols-2 gap-3 animate-fadeIn">
-              <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1">Dari Tanggal</label>
-                <input type="date" value={customStartDate} onChange={(e) => setCustomStartDate(e.target.value)} className="w-full p-1.5 text-sm border border-gray-300 rounded-md" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1">Sampai Tanggal</label>
-                <input type="date" value={customEndDate} onChange={(e) => setCustomEndDate(e.target.value)} className="w-full p-1.5 text-sm border border-gray-300 rounded-md" />
-              </div>
+            <div className="w-full md:w-2/3 grid grid-cols-2 gap-3">
+              <div><label className="block text-xs font-bold text-gray-500 mb-1">Dari Tanggal</label><input type="date" value={customStartDate} onChange={(e) => setCustomStartDate(e.target.value)} className="w-full p-1.5 text-sm border border-gray-300 rounded-md" /></div>
+              <div><label className="block text-xs font-bold text-gray-500 mb-1">Sampai Tanggal</label><input type="date" value={customEndDate} onChange={(e) => setCustomEndDate(e.target.value)} className="w-full p-1.5 text-sm border border-gray-300 rounded-md" /></div>
             </div>
           )}
         </div>
