@@ -13,21 +13,17 @@ function App() {
   const [message, setMessage] = useState('');
   const [formTransactionType, setFormTransactionType] = useState('expense');
 
-  // Filter Periode Bulanan Global (Dashboard Saldo Atas)
   const currentYearMonth = new Date().toISOString().substring(0, 7);
   const [selectedMonth, setSelectedMonth] = useState(currentYearMonth);
 
-  // Filter Waktu Riwayat Tabel
   const [historyPeriodMode, setHistoryPeriodMode] = useState('month'); 
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
-  // Filter Dropdown Jenis, Metode & Kategori
   const [filterType, setFilterType] = useState('all');       
   const [filterMethod, setFilterMethod] = useState('all');   
   const [filterCategory, setFilterCategory] = useState('all'); 
 
-  // State Dashboard Keuangan
   const [summary, setSummary] = useState({ 
     pastCashBalance: 0, pastBankBalance: 0, pastGrandBalance: 0,
     monthIncome: 0, monthExpense: 0, monthNetBalance: 0, 
@@ -36,20 +32,19 @@ function App() {
     finalCashBalance: 0, finalBankBalance: 0, finalGrandBalance: 0
   });
 
-  // 1. Ambil Data dari Server Backend via Ngrok
   const fetchData = async () => {
     try {
       const resCat = await fetch('https://voice-eastcoast-platypus.ngrok-free.dev/api/categories', {
         headers: { 'ngrok-skip-browser-warning': '69420' }
       });
       const dataCat = await resCat.json();
-      setCategories(dataCat);
+      setCategories(Array.isArray(dataCat) ? dataCat : []);
 
       const resTrans = await fetch('https://voice-eastcoast-platypus.ngrok-free.dev/api/transactions', {
         headers: { 'ngrok-skip-browser-warning': '69420' }
       });
       const dataTrans = await resTrans.json();
-      setTransactions(dataTrans);
+      setTransactions(Array.isArray(dataTrans) ? dataTrans : []);
     } catch (err) {
       console.error('Gagal mengambil data dari backend Ngrok:', err);
     }
@@ -59,40 +54,38 @@ function App() {
     fetchData();
   }, []);
 
-  // Otomatis set kategori pertama agar select box tidak kosong
   useEffect(() => {
-    const filteredCats = categories.filter(cat => cat.type === formTransactionType);
-    if (filteredCats.length > 0) {
-      setCategoryId(filteredCats[0].id);
-    } else {
-      setCategoryId('');
+    if (categories.length > 0) {
+      const filteredCats = categories.filter(cat => cat.category_type === formTransactionType || cat.type === formTransactionType);
+      if (filteredCats.length > 0) setCategoryId(filteredCats[0].id);
     }
   }, [formTransactionType, categories]);
 
-  // 2. Logika Hitung Akuntansi Kumulatif
   useEffect(() => {
     let mIncome = 0; let mExpense = 0; let cIncome = 0; let cExpense = 0;
     let bIncome = 0; let bExpense = 0; let pCash = 0; let pBank = 0;
 
     transactions.forEach((t) => {
       const nominal = parseFloat(t.amount || 0);
-      const d = new Date(t.date);
+      const d = new Date(t.date || t.tanggal);
       const formatTahunBulan = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const type = t.category_type || t.jenis_transaksi || 'expense';
+      const method = t.payment_method || t.metode_pembayaran || 'cash';
 
       if (formatTahunBulan < selectedMonth) {
-        if (t.category_type === 'income') {
-          if (t.payment_method === 'bank') pBank += nominal; else pCash += nominal;
+        if (type === 'income' || type === 'Pemasukan') {
+          if (method === 'bank' || method === 'Bank') pBank += nominal; else pCash += nominal;
         } else {
-          if (t.payment_method === 'bank') pBank -= nominal; else pCash -= nominal;
+          if (method === 'bank' || method === 'Bank') pBank -= nominal; else pCash -= nominal;
         }
       } 
       else if (formatTahunBulan === selectedMonth) {
-        if (t.category_type === 'income') {
+        if (type === 'income' || type === 'Pemasukan') {
           mIncome += nominal;
-          if (t.payment_method === 'bank') bIncome += nominal; else cIncome += nominal;
+          if (method === 'bank' || method === 'Bank') bIncome += nominal; else cIncome += nominal;
         } else {
           mExpense += nominal;
-          if (t.payment_method === 'bank') bExpense += nominal; else cExpense += nominal;
+          if (method === 'bank' || method === 'Bank') bExpense += nominal; else cExpense += nominal;
         }
       }
     });
@@ -108,14 +101,10 @@ function App() {
     });
   }, [transactions, selectedMonth]);
 
-  const filteredCategoriesForForm = categories.filter(cat => cat.type === formTransactionType);
-  
-  // 3. Fungsi Simpan Transaksi Baru (Sudah Diperbaiki Struktur Kolomnya agar Sinkron ke Supabase)
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
     if (!date || !categoryId || !amount) {
-      alert('Mohon isi Tanggal, Kategori, dan Jumlah Uang terlebih dahulu!');
+      alert('Mohon isi Tanggal, Kategori, dan Jumlah Uang!');
       return;
     }
 
@@ -140,23 +129,15 @@ function App() {
 
       if (response.ok) {
         setMessage('✅ Catatan Keuangan Berhasil Disimpan!');
-        setAmount(''); 
-        setDescription(''); 
-        setReceiptUrl(''); 
-        setDate('');
-        // Segarkan data tabel dan dashboard
+        setAmount(''); setDescription(''); setReceiptUrl(''); setDate('');
         fetchData();
-        // Hapus pesan sukses setelah 3 detik
         setTimeout(() => setMessage(''), 3000);
-      } else {
-        setMessage('❌ Gagal menyimpan, periksa inputan Anda.');
       }
     } catch (error) { 
-      setMessage('❌ Hubungan ke server Backend terputus.'); 
+      setMessage('❌ Hubungan ke server terputus.'); 
     }
   };
 
-  // 4. Fungsi Hapus Transaksi
   const handleDelete = async (id) => {
     if (window.confirm('Apakah Anda yakin ingin menghapus catatan ini?')) {
       try {
@@ -170,71 +151,48 @@ function App() {
           setTimeout(() => setMessage(''), 3000);
         }
       } catch (error) { 
-        setMessage('❌ Hubungan ke server Backend terputus.'); 
+        setMessage('❌ Hubungan ke server terputus.'); 
       }
     }
   };
 
-  // 5. Menyaring Data Tabel
   const displayedTransactions = transactions.filter((t) => {
-    const d = new Date(t.date);
+    const d = new Date(t.date || t.tanggal);
     const formatTahunBulan = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    const formatTanggalLokal = t.date.split('T')[0];
+    const formatTanggalLokal = (t.date || t.tanggal || '').split('T')[0];
+    const type = t.category_type || t.jenis_transaksi || 'all';
+    const method = t.payment_method || t.metode_pembayaran || 'all';
+    const catName = t.category_name || t.nama_kategori || 'all';
 
     let matchWaktu = false;
-    if (historyPeriodMode === 'all') {
-      matchWaktu = true;
-    } else if (historyPeriodMode === 'month') {
-      matchWaktu = formatTahunBulan === selectedMonth;
-    } else if (historyPeriodMode === 'custom') {
+    if (historyPeriodMode === 'all') matchWaktu = true;
+    else if (historyPeriodMode === 'month') matchWaktu = formatTahunBulan === selectedMonth;
+    else if (historyPeriodMode === 'custom') {
       const start = customStartDate || '1970-01-01';
       const end = customEndDate || '9999-12-31';
       matchWaktu = formatTanggalLokal >= start && formatTanggalLokal <= end;
     }
 
-    const matchType = filterType === 'all' || t.category_type === filterType;
-    const matchMethod = filterMethod === 'all' || t.payment_method === filterMethod;
-    const matchCategory = filterCategory === 'all' || t.category_name === filterCategory;
+    const matchType = filterType === 'all' || type === filterType || (filterType === 'income' && type === 'Pemasukan') || (filterType === 'expense' && type === 'Pengeluaran');
+    const matchMethod = filterMethod === 'all' || method === filterMethod || (filterMethod === 'cash' && method === 'Cash') || (filterMethod === 'bank' && method === 'Bank');
+    const matchCategory = filterCategory === 'all' || catName === filterCategory;
 
     return matchWaktu && matchType && matchMethod && matchCategory;
   });
 
-  const exportToExcel = () => {
-    if (displayedTransactions.length === 0) {
-      alert("Tidak ada data transaksi pada periode filter ini untuk diekspor!");
-      return;
-    }
-    const dataUntukExcel = displayedTransactions.map((t) => ({
-      'Tanggal': new Date(t.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }),
-      'Jenis': t.category_type === 'income' ? 'Pemasukan' : 'Pengeluaran',
-      'Kategori': t.category_name,
-      'Metode': t.payment_method === 'bank' ? '🏦 Bank' : '💵 Cash',
-      'Keterangan / Deskripsi': t.description,
-      'Nominal (Rp)': parseFloat(t.amount)
-    }));
-
-    const worksheet = XLSX.utils.json_to_sheet(dataUntukExcel);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Laporan Keuangan");
-    XLSX.writeFile(workbook, `Laporan_Keuangan_Terfilter.xlsx`);
-  };
-
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-start p-6 space-y-6">
       
-      {/* 📅 ACUAN FILTER GLOBAL */}
       <div className="w-full max-w-4xl bg-white p-4 rounded-xl shadow-md flex flex-col sm:flex-row items-center justify-between gap-4">
         <div>
           <h2 className="text-md font-bold text-gray-800">📅 Acuan Dashboard Bulanan</h2>
-          <p className="text-xs text-gray-500">Menentukan perhitungan Saldo Awal & Saldo Berjalan di kotak atas</p>
         </div>
         <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="p-2 border border-gray-300 rounded-lg font-semibold text-blue-600 bg-gray-50 text-center" />
       </div>
 
-      {/* 📊 DASHBOARD UTAMA AKUNTANSI */}
       <div className="w-full max-w-4xl space-y-4">
         <div className="bg-gray-200/60 p-4 rounded-xl border border-gray-300 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <h3 className="text-xs font-black text-gray-600 uppercase">⏳ SALDO AWAL (Bulan Sebelumnya)</h3>
+          <h3 className="text-xs font-black text-gray-600 uppercase">⏳ SALDO AWAL</h3>
           <div className="flex flex-wrap gap-4 text-xs font-bold text-gray-700">
             <span>💵 Cash: <span className="text-amber-700">Rp {summary.pastCashBalance.toLocaleString('id-ID')}</span></span>
             <span>🏦 Bank: <span className="text-sky-700">Rp {summary.pastBankBalance.toLocaleString('id-ID')}</span></span>
@@ -268,18 +226,11 @@ function App() {
             </div>
           </div>
         </div>
-
-        <div className="bg-gradient-to-r from-slate-700 to-slate-800 p-5 rounded-2xl shadow-lg text-white grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div><p className="text-slate-400 text-[11px] font-bold">💵 SALDO AKHIR CASH</p><p className="text-lg font-bold text-amber-400">Rp {summary.finalCashBalance.toLocaleString('id-ID')}</p></div>
-          <div><p className="text-slate-400 text-[11px] font-bold">🏦 SALDO AKHIR BANK</p><p className="text-lg font-bold text-sky-400">Rp {summary.finalBankBalance.toLocaleString('id-ID')}</p></div>
-          <div className="bg-slate-900/40 p-2 rounded-xl border border-slate-600"><p className="text-blue-300 text-[11px] font-black">💎 TOTAL SALDO AKHIR FINAL</p><p className="text-xl font-black text-blue-300">Rp {summary.finalGrandBalance.toLocaleString('id-ID')}</p></div>
-        </div>
       </div>
 
-      {/* 📥 FORM INPUT TRANSAKSI */}
       <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
         <h1 className="text-2xl font-bold text-center text-blue-600 mb-2">Pencatatan Keuangan</h1>
-        {message && <div className={`p-3 rounded-lg mb-4 text-sm font-medium text-center ${message.includes('✅') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{message}</div>}
+        {message && <div className="p-3 rounded-lg mb-4 text-sm font-medium text-center bg-blue-100 text-blue-700">{message}</div>}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Tanggal</label>
@@ -296,7 +247,9 @@ function App() {
             <label className="block text-sm font-semibold text-gray-700 mb-1">Kategori</label>
             <select value={categoryId} required onChange={(e) => setCategoryId(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg bg-white">
               <option value="">-- Pilih Kategori --</option>
-              {filteredCategoriesForForm.map(cat => <option key={cat.id} value={cat.id}>📁 {cat.name || cat.nama_kategori}</option>)}
+              {categories.filter(cat => (cat.type || cat.category_type) === formTransactionType).map(cat => (
+                <option key={cat.id} value={cat.id}>📁 {cat.name || cat.nama_kategori}</option>
+              ))}
             </select>
           </div>
           <div>
@@ -314,67 +267,29 @@ function App() {
             <label className="block text-sm font-semibold text-gray-700 mb-1">Keterangan</label>
             <textarea required value={description} onChange={(e) => setDescription(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg h-20 resize-none"></textarea>
           </div>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Link Foto Nota</label>
-            <input type="url" value={receiptUrl} onChange={(e) => setReceiptUrl(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg" />
-          </div>
-          <button type="submit" className="w-full font-semibold p-3 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition">
-            Simpan Catatan
-          </button>
+          <button type="submit" className="w-full font-semibold p-3 rounded-lg bg-blue-600 text-white">Simpan Catatan</button>
         </form>
       </div>
 
-      {/* TABEL RIWAYAT TRANSAKSI */}
       <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-4xl overflow-hidden">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4 border-b border-gray-100 pb-3">
-          <h2 className="text-xl font-bold text-gray-800">📋 Riwayat Transaksi Keuangan</h2>
-          <button onClick={exportToExcel} className="w-full sm:w-auto flex items-center justify-center space-x-2 bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold text-sm shadow">
-            <span>📥 Export ke Excel</span>
-          </button>
-        </div>
-
-        <div className="bg-blue-50/70 p-4 rounded-xl border border-blue-200 flex flex-col md:flex-row items-start md:items-center gap-4 mb-4">
-          <div className="w-full md:w-1/3">
-            <label className="block text-xs font-black text-blue-700 uppercase mb-1">Rentang Waktu Tabel</label>
-            <select value={historyPeriodMode} onChange={(e) => setHistoryPeriodMode(e.target.value)} className="w-full p-2 text-sm border border-blue-300 rounded-md bg-white font-bold text-gray-700">
-              <option value="month">📅 Hanya Bulan Berjalan</option>
-              <option value="all">♾️ Semua Periode (Tanpa Batas)</option>
-              <option value="custom">🛠️ Periode Tertentu (Kustom Tanggal)</option>
-            </select>
-          </div>
-          {historyPeriodMode === 'custom' && (
-            <div className="w-full md:w-2/3 grid grid-cols-2 gap-3">
-              <div><label className="block text-xs font-bold text-gray-500 mb-1">Dari Tanggal</label><input type="date" value={customStartDate} onChange={(e) => setCustomStartDate(e.target.value)} className="w-full p-1.5 text-sm border border-gray-300 rounded-md" /></div>
-              <div><label className="block text-xs font-bold text-gray-500 mb-1">Sampai Tanggal</label><input type="date" value={customEndDate} onChange={(e) => setCustomEndDate(e.target.value)} className="w-full p-1.5 text-sm border border-gray-300 rounded-md" /></div>
-            </div>
-          )}
-        </div>
-
-        <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-          <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Jenis Kas</label><select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="w-full p-2 text-sm border border-gray-300 rounded-md bg-white font-semibold text-gray-700"><option value="all">Semua</option><option value="income">Pemasukan</option><option value="expense">Pengeluaran</option></select></div>
-          <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Metode</label><select value={filterMethod} onChange={(e) => setFilterMethod(e.target.value)} className="w-full p-2 text-sm border border-gray-300 rounded-md bg-white font-semibold text-gray-700"><option value="all">Semua</option><option value="cash">💵 Cash</option><option value="bank">🏦 Bank</option></select></div>
-          <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nama Kategori</label><select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="w-full p-2 text-sm border border-gray-300 rounded-md bg-white font-semibold text-gray-700"><option value="all">Semua Kategori</option>{Array.from(new Set(categories.map(c => c.name || c.nama_kategori))).map((catName, index) => <option key={index} value={catName}>📁 {catName}</option>)}</select></div>
-        </div>
-        
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-gray-100 text-gray-700 text-sm font-semibold border-b border-gray-200">
-                <th className="p-3">Tanggal</th><th className="p-3">Kategori</th><th className="p-3">Metode</th><th className="p-3">Keterangan</th><th className="p-3 text-right">Nominal</th><th className="p-3 text-center">Aksi</th>
+                <th className="p-3">Tanggal</th><th className="p-3">Kategori</th><th className="p-3">Metode</th><th className="p-3">Keterangan</th><th className="p-3 text-right">Nominal</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-sm text-gray-600">
               {displayedTransactions.length === 0 ? (
-                <tr><td colSpan="6" className="p-4 text-center text-gray-400 italic">Tidak ada transaksi yang cocok dengan periode / filter ini.</td></tr>
+                <tr><td colSpan="5" className="p-4 text-center text-gray-400 italic">Tidak ada transaksi.</td></tr>
               ) : (
                 displayedTransactions.map((t) => (
                   <tr key={t.id} className="hover:bg-gray-50 transition">
-                    <td className="p-3 whitespace-nowrap">{new Date(t.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
-                    <td className="p-3"><span className={`px-2 py-1 rounded-md text-xs font-semibold ${t.category_type === 'income' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{t.category_name}</span></td>
-                    <td className="p-3 font-semibold">{t.payment_method === 'bank' ? '🏦 Bank' : '💵 Cash'}</td>
-                    <td className="p-3 font-medium text-gray-800">{t.description}</td>
-                    <td className={`p-3 text-right font-bold ${t.category_type === 'income' ? 'text-green-600' : 'text-red-600'}`}>{t.category_type === 'income' ? '+' : '-'} Rp {parseFloat(t.amount).toLocaleString('id-ID')}</td>
-                    <td className="p-3 text-center"><button onClick={() => handleDelete(t.id)} className="text-red-500 hover:text-red-700 font-bold text-xs bg-red-50 px-2 py-1 rounded">✕ Hapus</button></td>
+                    <td className="p-3 whitespace-nowrap">{new Date(t.date || t.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+                    <td className="p-3"><span className="px-2 py-1 rounded-md text-xs font-semibold bg-gray-100">{t.category_name || t.nama_kategori}</span></td>
+                    <td className="p-3">{t.payment_method || t.metode_pembayaran}</td>
+                    <td className="p-3">{t.description || t.keterangan}</td>
+                    <td className="p-3 text-right font-bold">Rp {parseFloat(t.amount || t.jumlah_uang || 0).toLocaleString('id-ID')}</td>
                   </tr>
                 ))
               )}
@@ -382,6 +297,7 @@ function App() {
           </table>
         </div>
       </div>
+
     </div>
   );
 }
