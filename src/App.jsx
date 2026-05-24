@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 
 function App() {
-  // 1. STATE UNTUK MENYIMPAN DATA DARI BACKEND
+  // 1. STATE DATA UTAMA CLOUD
   const [categories, setCategories] = useState([]);
   const [transactions, setTransactions] = useState([]);
   
-  // 2. STATE INPUT FORM TRANSAKSI BARU
+  // 2. STATE FORM INPUT TRANSAKSI BARU
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [type, setType] = useState('expense'); // 'income' atau 'expense'
   const [categoryId, setCategoryId] = useState('');
@@ -13,11 +13,11 @@ function App() {
   const [description, setDescription] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
 
-  // 3. STATE ACUAN UTAMA BULANAN DASHBOARD (DEFAULT BULAN BERJALAN)
+  // 3. STATE ACUAN DASHBOARD BULANAN
   const currentYearMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
   const [selectedMonth, setSelectedMonth] = useState(currentYearMonth);
 
-  // 4. STATE MULTI-FILTER UNTUK RIWAYAT TABEL BAWAH
+  // 4. STATE FILTER PENCARIAN LOG TABEL BAWAH
   const [filterMode, setFilterMode] = useState('month'); // 'month' atau 'range'
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
@@ -25,10 +25,9 @@ function App() {
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterPaymentMethod, setFilterPaymentMethod] = useState('all');
 
-  // URL API Backend Vercel Mas Yudi
   const BACKEND_URL = 'https://aplikasi-keuangan-backend.vercel.app';
 
-  // 5. AMBIL DATA DARI BACKEND CLOUD
+  // 5. FETCH DATA FROM SUPABASE BACKEND
   const fetchData = async () => {
     try {
       const resCat = await fetch(`${BACKEND_URL}/api/categories`);
@@ -47,7 +46,6 @@ function App() {
     fetchData();
   }, []);
 
-  // Sinkronisasi otomatis kategori saat tombol Jenis Transaksi diklik
   useEffect(() => {
     const filteredCats = categories.filter(c => c.type === type);
     if (filteredCats.length > 0) {
@@ -57,7 +55,7 @@ function App() {
     }
   }, [type, categories]);
 
-  // 6. PROSES SIMPAN TRANSAKSI BARU
+  // 6. HANDLER SIMPAN TRANSAKSI
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!categoryId || !amount) {
@@ -91,9 +89,9 @@ function App() {
     }
   };
 
-  // 7. 🧮 LOGIKA PERHITUNGAN AKUNTANSI ANTI-MINUS (DASHBOARD ATAS)
+  // 7. 🧮 LOGIKA HITUNG AKUNTANSI - DIKUNCI AGAR TIDAK MINUS CHIPS
   
-  // A. Ambil semua data mutasi SEBELUM bulan terpilih (Untuk Saldo Awal)
+  // A. Transaksi BULAN-BULAN SEBELUMNYA (Untuk Saldo Awal)
   const priorTransactions = transactions.filter(t => {
     if (!t.date) return false;
     return t.date.substring(0, 7) < selectedMonth;
@@ -115,12 +113,12 @@ function App() {
     .filter(t => (t.category_type === 'expense' || t.type === 'expense') && t.payment_method === 'bank')
     .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
 
-  // Rumus hitung saldo awal (Gunakan Math.max dengan angka 0 agar tidak pernah minus)
+  // Kunci rumus Math.max(0, ...) supaya tidak minus di baris Saldo Awal
   const initialCash = Math.max(0, priorIncomeCash - priorExpenseCash);
   const initialBank = Math.max(0, priorIncomeBank - priorExpenseBank);
   const initialTotal = initialCash + initialBank;
 
-  // B. Ambil data mutasi KHUSUS pada bulan berjalan yang dipilih
+  // B. Transaksi KHUSUS BULAN INI YANG SEDANG DIPILIH
   const currentMonthTransactions = transactions.filter(t => {
     if (!t.date) return false;
     return t.date.substring(0, 7) === selectedMonth;
@@ -144,40 +142,34 @@ function App() {
 
   const totalMonthIncome = currentIncomeCash + currentIncomeBank;
   const totalMonthExpense = currentExpenseCash + currentExpenseBank;
-  
-  // Perhitungan Saldo Berjalan Bulan Ini (Bisa minus jika pengeluaran bulan ini saja membengkak, tapi dikunci 0 jika total sisa bersih)
   const totalMonthSaldo = totalMonthIncome - totalMonthExpense;
 
-  // C. Kalkulasi Final Kumulatif Akumulasi Akhir (Saldo Awal + Pergerakan Bulan Ini)
+  // C. Kalkulasi FINAL AKHIR REAL KUMULATIF (Saldo Awal + Mutasi Bulan Ini)
+  // Dikunci Math.max(0, ...) agar box hitam paling bawah anti-minus
   const finalCash = Math.max(0, initialCash + currentIncomeCash - currentExpenseCash);
   const finalBank = Math.max(0, initialBank + currentIncomeBank - currentExpenseBank);
   const finalTotal = finalCash + finalBank;
 
-
-  // 8. LOGIKA FILTER RIWAYAT TRANSAKSI TABEL BAWAH
+  // 8. LOGIKA FILTER PENYARINGAN RIWAYAT TABEL BAWAH
   const filteredTransactions = transactions.filter(t => {
     if (!t.date) return false;
     const rawDate = t.date.substring(0, 10);
     const transType = t.category_type || t.type || '';
 
-    // Filter Rentang Tanggal / Bulan
     if (filterMode === 'month') {
       if (rawDate.substring(0, 7) !== selectedMonth) return false;
     } else if (filterMode === 'range') {
       if (rawDate < startDate || rawDate > endDate) return false;
     }
 
-    // Filter Jenis Uang
     if (filterType !== 'all') {
       if (transType !== filterType) return false;
     }
 
-    // Filter Berdasarkan Kategori
     if (filterCategory !== 'all') {
       if (String(t.category_id) !== filterCategory) return false;
     }
 
-    // Filter Berdasarkan Metode Pembayaran
     if (filterPaymentMethod !== 'all') {
       if (t.payment_method !== filterPaymentMethod) return false;
     }
@@ -188,11 +180,11 @@ function App() {
   return (
     <div className="max-w-4xl mx-auto bg-gray-50 min-h-screen pb-12 font-sans antialiased text-gray-800">
       
-      {/* NAVBAR TOP PREMIUM LEBAR */}
+      {/* NAVBAR MODERN SEPERTI GAMBAR DIALDEE6 */}
       <div className="bg-white px-6 py-4 flex justify-between items-center shadow-sm border-b border-gray-200">
         <div className="flex items-center gap-2">
           <span className="text-2xl">📊</span>
-          <h1 className="text-xl font-black tracking-tight text-blue-600">Pencatatan Keuangan Toko</h1>
+          <h1 className="text-xl font-black tracking-tight text-blue-600">Pencatatan Keuangan</h1>
         </div>
         <div className="flex items-center gap-2 bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-xl">
           <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">ACUAN DASHBOARD:</span>
@@ -207,10 +199,10 @@ function App() {
 
       <div className="p-4 space-y-4">
         
-        {/* PANEL 1: KOTAK SALDO AWAL (ANTI MINUS) */}
+        {/* PANEL 1: KOTAK SALDO AWAL (SEKARANG SUDAH AMAN DARI MINUS) */}
         <div className="p-3.5 bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs font-bold">
           <div className="flex items-center gap-1.5 text-gray-400">
-            <span>⏳</span> <span>SALDO AWAL (KUMULATIF BULAN SEBELUMNYA)</span>
+            <span>⏳</span> <span>SALDO AWAL (BULAN SEBELUMNYA)</span>
           </div>
           <div className="flex flex-wrap gap-4 text-xs">
             <span className="text-gray-500">💵 Cash: <b className="text-gray-800 font-extrabold">Rp {initialCash.toLocaleString('id-ID')}</b></span>
@@ -219,7 +211,7 @@ function App() {
           </div>
         </div>
 
-        {/* PANEL 2: 3 KARTU INDIKATOR MUTASI BULAN INI */}
+        {/* PANEL 2: 3 KARTU MUTASI BULAN INI */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white border-l-4 border-emerald-500 p-4 rounded-xl shadow-sm border border-gray-200">
             <p className="text-[10px] uppercase font-bold text-emerald-600 tracking-wider mb-1">Pemasukan Bulan Ini</p>
@@ -240,18 +232,18 @@ function App() {
           </div>
 
           <div className="bg-white border-l-4 border-blue-500 p-4 rounded-xl shadow-sm border border-gray-200">
-            <p className="text-[10px] uppercase font-bold text-blue-600 tracking-wider mb-1">Saldo Berjalan Bulan Ini</p>
+            <p className="text-[10px] uppercase font-bold text-blue-600 tracking-wider mb-1">Saldo Berjalan</p>
             <p className={`text-lg font-black ${totalMonthSaldo >= 0 ? 'text-blue-700' : 'text-rose-600'}`}>
               Rp {totalMonthSaldo.toLocaleString('id-ID')}
             </p>
             <div className="text-[10px] text-gray-400 mt-2 flex justify-between border-t pt-1.5 border-dashed">
-              <span>Cash: Rp {(currentIncomeCash - currentExpenseCash).toLocaleString('id-ID')}</span>
-              <span>Bank: Rp {(currentIncomeBank - currentExpenseBank).toLocaleString('id-ID')}</span>
+              <span>Cash: Rp {currentIncomeCash.toLocaleString('id-ID')}</span>
+              <span>Bank: Rp {currentIncomeBank.toLocaleString('id-ID')}</span>
             </div>
           </div>
         </div>
 
-        {/* PANEL 3: BANNER BOTTOM TOTAL SALDO AKHIR FINAL UTUH */}
+        {/* PANEL 3: TOTAL KOTAK HITAM SALDO AKHIR FINAL (ANTI MINUS) */}
         <div className="p-4 bg-slate-900 text-white rounded-xl shadow-md grid grid-cols-1 md:grid-cols-3 gap-3 text-center text-xs font-bold divide-y md:divide-y-0 md:divide-x divide-slate-800">
           <div className="py-1">
             <p className="text-slate-400 text-[10px] font-medium uppercase tracking-wider mb-0.5">💵 SALDO AKHIR CASH</p>
@@ -262,15 +254,15 @@ function App() {
             <p className="text-sky-400 text-base font-black">Rp {finalBank.toLocaleString('id-ID')}</p>
           </div>
           <div className="py-1">
-            <p className="text-slate-300 text-[10px] font-black uppercase tracking-wider mb-0.5">🎯 TOTAL REAL SALDO AKHIR</p>
+            <p className="text-slate-300 text-[10px] font-black uppercase tracking-wider mb-0.5">🎯 TOTAL SALDO AKHIR FINAL</p>
             <p className="text-white text-lg font-black">Rp {finalTotal.toLocaleString('id-ID')}</p>
           </div>
         </div>
 
-        {/* WORKSPACE DUA KOLOM: KIRI FORM INPUT, KANAN TABEL RIWAYAT & FILTER */}
+        {/* WORKSPACE 3 KOLOM */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
           
-          {/* KOLOM 1: FORM INPUT DATA MAS YUDI */}
+          {/* KOLOM INPUT FORM */}
           <form onSubmit={handleSubmit} className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 space-y-4 lg:col-span-1">
             <h3 className="text-xs font-black text-gray-500 uppercase border-b pb-2 tracking-wide">✍️ Input Transaksi Baru</h3>
             
@@ -324,10 +316,10 @@ function App() {
             </button>
           </form>
 
-          {/* KOLOM 2 & 3: FILTER SELECTION & TABEL DATA UTAMA */}
+          {/* FILTER & TABEL RIWAYAT */}
           <div className="lg:col-span-2 space-y-4">
             
-            {/* 🔍 PANEL FILTER LOG RIWAYAT */}
+            {/* PANEL FILTER SEARCH */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 space-y-3">
               <div className="flex items-center gap-1.5 border-b pb-2">
                 <span className="text-sm">🔍</span>
@@ -390,7 +382,7 @@ function App() {
               </div>
             </div>
 
-            {/* TABEL DATA UTAMA */}
+            {/* TABEL DATA AKUNTANSI 5 KOLOM LUAS UTUH */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
               <div className="flex justify-between items-center mb-3">
                 <div className="flex items-center gap-1">
