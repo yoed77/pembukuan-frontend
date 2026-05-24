@@ -251,11 +251,21 @@ function App() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-sm text-gray-600">
-              {transactions.length === 0 ? (
-                <tr><td colSpan="5" className="p-4 text-center text-gray-400 italic">Tidak ada transaksi.</td></tr>
-              ) : (
-                transactions.map((t) => (
-                  <tr key={t.id} className="hover:bg-gray-50 transition">
+              {transactions.filter(t => {
+  const d = new Date(t.date || t.tanggal);
+  const formatTahunBulan = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  return formatTahunBulan === selectedMonth;
+}).length === 0 ? (
+  <tr><td colSpan="5" className="p-4 text-center text-gray-400 italic">Tidak ada transaksi di bulan ini.</td></tr>
+) : (
+  transactions
+    .filter(t => {
+      const d = new Date(t.date || t.tanggal);
+      const formatTahunBulan = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      return formatTahunBulan === selectedMonth;
+    })
+    .map((t) => (
+      <tr key={t.id} className="hover:bg-gray-50 transition">
                     <td className="p-3 whitespace-nowrap">{new Date(t.date || t.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
                     <td className="p-3"><span className="px-2 py-1 rounded-md text-xs font-semibold bg-gray-100">{t.category_name || t.nama_kategori}</span></td>
                     <td className="p-3">{t.payment_method || t.metode_pembayaran}</td>
