@@ -18,10 +18,10 @@ function App() {
   const [selectedMonth, setSelectedMonth] = useState(currentYearMonth);
 
   // 4. STATE FILTER PENCARIAN LOG TABEL BAWAH
-  const [filterMode, setFilterMode] = useState('month'); // 'month' atau 'range'
+  const [filterMode, setFilterMode] = useState('month'); 
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
-  const [filterType, setFilterType] = useState('all'); // 'all', 'income', 'expense'
+  const [filterType, setFilterType] = useState('all'); 
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterPaymentMethod, setFilterPaymentMethod] = useState('all');
 
@@ -55,41 +55,8 @@ function App() {
     }
   }, [type, categories]);
 
-  // 6. HANDLER SIMPAN TRANSAKSI
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!categoryId || !amount) {
-      alert('Mohon pilih kategori dan isi jumlah uang!');
-      return;
-    }
 
-    try {
-      const response = await fetch(`${BACKEND_URL}/api/transactions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          category_id: parseInt(categoryId),
-          amount: parseFloat(amount),
-          description: description || 'Tanpa keterangan',
-          date,
-          payment_method: paymentMethod
-        })
-      });
-
-      if (response.ok) {
-        setAmount('');
-        setDescription('');
-        fetchData();
-        alert('Transaksi berhasil disimpan!');
-      } else {
-        alert('Gagal menyimpan transaksi');
-      }
-    } catch (err) {
-      console.error('Eror simpan:', err);
-    }
-  };
-
-  // 7. 🧮 LOGIKA HITUNG AKUNTANSI - DIKUNCI AGAR TIDAK MINUS CHIPS
+  // 6. 🧮 LOGIKA HITUNG AKUNTANSI REAL-TIME (DIPAKAI DASHBOARD & VALIDASI FORM)
   
   // A. Transaksi BULAN-BULAN SEBELUMNYA (Untuk Saldo Awal)
   const priorTransactions = transactions.filter(t => {
@@ -113,7 +80,7 @@ function App() {
     .filter(t => (t.category_type === 'expense' || t.type === 'expense') && t.payment_method === 'bank')
     .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
 
-  // Kunci rumus Math.max(0, ...) supaya tidak minus di baris Saldo Awal
+  // Kunci saldo awal minimal 0
   const initialCash = Math.max(0, priorIncomeCash - priorExpenseCash);
   const initialBank = Math.max(0, priorIncomeBank - priorExpenseBank);
   const initialTotal = initialCash + initialBank;
@@ -142,13 +109,63 @@ function App() {
 
   const totalMonthIncome = currentIncomeCash + currentIncomeBank;
   const totalMonthExpense = currentExpenseCash + currentExpenseBank;
-  const totalMonthSaldo = totalMonthIncome - totalMonthExpense;
+  
+  // FIX MINUS: Menggunakan Math.max(0, ...) agar Saldo Berjalan Bulan Ini tidak bisa minus di UI
+  const totalMonthSaldo = Math.max(0, totalMonthIncome - totalMonthExpense);
 
-  // C. Kalkulasi FINAL AKHIR REAL KUMULATIF (Saldo Awal + Mutasi Bulan Ini)
-  // Dikunci Math.max(0, ...) agar box hitam paling bawah anti-minus
+  // C. Kalkulasi FINAL AKHIR REAL KUMULATIF
   const finalCash = Math.max(0, initialCash + currentIncomeCash - currentExpenseCash);
   const finalBank = Math.max(0, initialBank + currentIncomeBank - currentExpenseBank);
   const finalTotal = finalCash + finalBank;
+
+
+  // 7. 🔥 HANDLER SIMPAN TRANSAKSI + SISTEM COCOK SALDO (ANTI-KAS-BON)
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!categoryId || !amount) {
+      alert('Mohon pilih kategori dan isi jumlah uang!');
+      return;
+    }
+
+    const inputAmount = parseFloat(amount);
+
+    // CEK VALIDASI: Jika jenis transaksi adalah pengeluaran, periksa sisa dompetnya
+    if (type === 'expense') {
+      if (paymentMethod === 'cash' && inputAmount > finalCash) {
+        alert(`❌ INPUT DITOLAK!\nSisa Saldo Cash Anda saat ini Rp ${finalCash.toLocaleString('id-ID')}, tidak cukup untuk pengeluaran sebesar Rp ${inputAmount.toLocaleString('id-ID')}.`);
+        return; // Menghentikan proses simpan ke database
+      }
+      if (paymentMethod === 'bank' && inputAmount > finalBank) {
+        alert(`❌ INPUT DITOLAK!\nSisa Saldo Bank Anda saat ini Rp ${finalBank.toLocaleString('id-ID')}, tidak cukup untuk pengeluaran sebesar Rp ${inputAmount.toLocaleString('id-ID')}.`);
+        return; // Menghentikan proses simpan ke database
+      }
+    }
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/transactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category_id: parseInt(categoryId),
+          amount: inputAmount,
+          description: description || 'Tanpa keterangan',
+          date,
+          payment_method: paymentMethod
+        })
+      });
+
+      if (response.ok) {
+        setAmount('');
+        setDescription('');
+        fetchData();
+        alert('✅ Transaksi berhasil disimpan!');
+      } else {
+        alert('Gagal menyimpan transaksi');
+      }
+    } catch (err) {
+      console.error('Eror simpan:', err);
+    }
+  };
 
   // 8. LOGIKA FILTER PENYARINGAN RIWAYAT TABEL BAWAH
   const filteredTransactions = transactions.filter(t => {
@@ -180,11 +197,11 @@ function App() {
   return (
     <div className="max-w-4xl mx-auto bg-gray-50 min-h-screen pb-12 font-sans antialiased text-gray-800">
       
-      {/* NAVBAR MODERN SEPERTI GAMBAR DIALDEE6 */}
+      {/* NAVBAR MODERN */}
       <div className="bg-white px-6 py-4 flex justify-between items-center shadow-sm border-b border-gray-200">
         <div className="flex items-center gap-2">
           <span className="text-2xl">📊</span>
-          <h1 className="text-xl font-black tracking-tight text-blue-600">Pencatatan Keuangan</h1>
+          <h1 className="text-xl font-black tracking-tight text-blue-600">Pencatatan Keuangan Toko</h1>
         </div>
         <div className="flex items-center gap-2 bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-xl">
           <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">ACUAN DASHBOARD:</span>
@@ -199,10 +216,10 @@ function App() {
 
       <div className="p-4 space-y-4">
         
-        {/* PANEL 1: KOTAK SALDO AWAL (SEKARANG SUDAH AMAN DARI MINUS) */}
+        {/* PANEL 1: SALDO AWAL */}
         <div className="p-3.5 bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs font-bold">
           <div className="flex items-center gap-1.5 text-gray-400">
-            <span>⏳</span> <span>SALDO AWAL (BULAN SEBELUMNYA)</span>
+            <span>⏳</span> <span>SALDO AWAL (KUMULATIF BULAN SEBELUMNYA)</span>
           </div>
           <div className="flex flex-wrap gap-4 text-xs">
             <span className="text-gray-500">💵 Cash: <b className="text-gray-800 font-extrabold">Rp {initialCash.toLocaleString('id-ID')}</b></span>
@@ -211,7 +228,7 @@ function App() {
           </div>
         </div>
 
-        {/* PANEL 2: 3 KARTU MUTASI BULAN INI */}
+        {/* PANEL 2: 3 KARTU MUTASI BULAN INI (SUDAH ANTI MINUS) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white border-l-4 border-emerald-500 p-4 rounded-xl shadow-sm border border-gray-200">
             <p className="text-[10px] uppercase font-bold text-emerald-600 tracking-wider mb-1">Pemasukan Bulan Ini</p>
@@ -232,18 +249,18 @@ function App() {
           </div>
 
           <div className="bg-white border-l-4 border-blue-500 p-4 rounded-xl shadow-sm border border-gray-200">
-            <p className="text-[10px] uppercase font-bold text-blue-600 tracking-wider mb-1">Saldo Berjalan</p>
-            <p className={`text-lg font-black ${totalMonthSaldo >= 0 ? 'text-blue-700' : 'text-rose-600'}`}>
+            <p className="text-[10px] uppercase font-bold text-blue-600 tracking-wider mb-1">Saldo Berjalan Bulan Ini</p>
+            <p className="text-lg font-black text-blue-700">
               Rp {totalMonthSaldo.toLocaleString('id-ID')}
             </p>
             <div className="text-[10px] text-gray-400 mt-2 flex justify-between border-t pt-1.5 border-dashed">
-              <span>Cash: Rp {currentIncomeCash.toLocaleString('id-ID')}</span>
-              <span>Bank: Rp {currentIncomeBank.toLocaleString('id-ID')}</span>
+              <span>Cash: Rp {Math.max(0, currentIncomeCash - currentExpenseCash).toLocaleString('id-ID')}</span>
+              <span>Bank: Rp {Math.max(0, currentIncomeBank - currentExpenseBank).toLocaleString('id-ID')}</span>
             </div>
           </div>
         </div>
 
-        {/* PANEL 3: TOTAL KOTAK HITAM SALDO AKHIR FINAL (ANTI MINUS) */}
+        {/* PANEL 3: TOTAL REAL SALDO AKHIR FINAL */}
         <div className="p-4 bg-slate-900 text-white rounded-xl shadow-md grid grid-cols-1 md:grid-cols-3 gap-3 text-center text-xs font-bold divide-y md:divide-y-0 md:divide-x divide-slate-800">
           <div className="py-1">
             <p className="text-slate-400 text-[10px] font-medium uppercase tracking-wider mb-0.5">💵 SALDO AKHIR CASH</p>
@@ -254,17 +271,20 @@ function App() {
             <p className="text-sky-400 text-base font-black">Rp {finalBank.toLocaleString('id-ID')}</p>
           </div>
           <div className="py-1">
-            <p className="text-slate-300 text-[10px] font-black uppercase tracking-wider mb-0.5">🎯 TOTAL SALDO AKHIR FINAL</p>
+            <p className="text-slate-300 text-[10px] font-black uppercase tracking-wider mb-0.5">🎯 TOTAL REAL SALDO AKHIR</p>
             <p className="text-white text-lg font-black">Rp {finalTotal.toLocaleString('id-ID')}</p>
           </div>
         </div>
 
-        {/* WORKSPACE 3 KOLOM */}
+        {/* WORKSPACE DUA KOLOM */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
           
-          {/* KOLOM INPUT FORM */}
+          {/* KOLOM INPUT FORM DENGAN OVERFLOW VALIDATION */}
           <form onSubmit={handleSubmit} className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 space-y-4 lg:col-span-1">
-            <h3 className="text-xs font-black text-gray-500 uppercase border-b pb-2 tracking-wide">✍️ Input Transaksi Baru</h3>
+            <div className="flex justify-between items-center border-b pb-2">
+              <h3 className="text-xs font-black text-gray-500 uppercase tracking-wide">✍️ Input Transaksi</h3>
+              <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-sm font-bold">ANTI KAS-BON ACTIVATED</span>
+            </div>
             
             <div>
               <label className="block text-xs font-bold text-gray-600 mb-1">Tanggal</label>
@@ -304,6 +324,11 @@ function App() {
             <div>
               <label className="block text-xs font-bold text-gray-600 mb-1">Jumlah Uang (Rp)</label>
               <input type="number" placeholder="Contoh: 50000" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-gray-50 focus:outline-none" />
+              {type === 'expense' && (
+                <p className="text-[10px] text-gray-400 mt-1 font-medium">
+                  * Maksimal input: <span className="text-amber-600 font-bold">Rp {paymentMethod === 'cash' ? finalCash.toLocaleString('id-ID') : finalBank.toLocaleString('id-ID')}</span>
+                </p>
+              )}
             </div>
 
             <div>
@@ -382,7 +407,7 @@ function App() {
               </div>
             </div>
 
-            {/* TABEL DATA AKUNTANSI 5 KOLOM LUAS UTUH */}
+            {/* TABEL DATA AKUNTANSI */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
               <div className="flex justify-between items-center mb-3">
                 <div className="flex items-center gap-1">
