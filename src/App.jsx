@@ -5,7 +5,8 @@ function App() {
   const [categories, setCategories] = useState([]);
   const [transactions, setTransactions] = useState([]);
   
-  // 2. STATE FORM INPUT TRANSAKSI BARU
+  // 2. STATE FORM INPUT TRANSAKSI BARU / EDIT
+  const [editingId, setEditingId] = useState(null); // Null = input baru, kalau ada ID = mode edit
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [type, setType] = useState('expense'); 
   const [categoryId, setCategoryId] = useState('');
@@ -18,8 +19,8 @@ function App() {
   const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
   const [selectedMonth, setSelectedMonth] = useState(`${currentYear}-${currentMonth}`);
 
-  // 4. STATE FILTER PENCARIAN LOG TABEL (TAHUN/BULAN & PERIODE TANGGAL)
-  const [filterRangeMode, setFilterRangeMode] = useState('dropdown'); // 'dropdown' atau 'custom'
+  // 4. STATE FILTER PENCARIAN LOG TABEL
+  const [filterRangeMode, setFilterRangeMode] = useState('dropdown'); 
   const [filterYear, setFilterYear] = useState(currentYear);
   const [filterMonth, setFilterMonth] = useState(currentMonth); 
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
@@ -51,13 +52,15 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const filteredCats = categories.filter(c => c.type === type);
-    if (filteredCats.length > 0) {
-      setCategoryId(filteredCats[0].id);
-    } else {
-      setCategoryId('');
+    if (!editingId) { // Hanya auto-switch kategori jika sedang tidak dalam mode edit
+      const filteredCats = categories.filter(c => c.type === type);
+      if (filteredCats.length > 0) {
+        setCategoryId(filteredCats[0].id);
+      } else {
+        setCategoryId('');
+      }
     }
-  }, [type, categories]);
+  }, [type, categories, editingId]);
 
 
   // 6. 🧮 LOGIKA PERHITUNGAN SALDO REAL KUMULATIF (STRICT ANTI-MINUS)
@@ -137,7 +140,7 @@ function App() {
   const finalTotal = finalCash + finalBank;
 
 
-  // 7. 🔥 HANDLER SIMPAN TRANSAKSI + CEK TOTAL SALDO MINUS
+  // 7. 🔥 HANDLER SIMPAN & PERBARUI TRANSAKSI (CREATE / UPDATE)
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!categoryId || !amount) {
@@ -147,62 +150,117 @@ function App() {
 
     const inputAmount = parseFloat(amount);
 
+    // Hitung limit pengaman saldo jika dalam mode pengeluaran
     if (type === 'expense') {
-      if (paymentMethod === 'cash' && inputAmount > realCurrentCashWallet) {
-        alert(`❌ INPUT DITOLAK!\nSisa Uang Cash riil Anda sekarang tinggal Rp ${Math.max(0, realCurrentCashWallet).toLocaleString('id-ID')}.\nTidak boleh menginput pengeluaran sebesar Rp ${inputAmount.toLocaleString('id-ID')} (Menyebabkan Kas Minus).`);
-        return; 
+      let currentLimit = paymentMethod === 'cash' ? realCurrentCashWallet : realCurrentBankWallet;
+      
+      // Jika sedang mengedit, tambahkan nominal lama kembali ke limit kalkulasi agar tidak mengunci diri sendiri
+      if (editingId) {
+        const oldTx = transactions.find(t => t.id === editingId);
+        if (oldTx && oldTx.payment_method === paymentMethod && (oldTx.category_type === 'expense' || oldTx.type === 'expense')) {
+          currentLimit += parseFloat(oldTx.amount || 0);
+        }
       }
-      if (paymentMethod === 'bank' && inputAmount > realCurrentBankWallet) {
-        alert(`❌ INPUT DITOLAK!\nSisa Saldo Rekening Bank Anda sekarang tinggal Rp ${Math.max(0, realCurrentBankWallet).toLocaleString('id-ID')}.\nTidak boleh menginput pengeluaran sebesar Rp ${inputAmount.toLocaleString('id-ID')} (Menyebabkan Rekening Minus).`);
+
+      if (inputAmount > currentLimit) {
+        alert(`❌ INPUT DITOLAK!\nBatas aman pengeluaran metode ${paymentMethod.toUpperCase()} adalah Rp ${Math.max(0, currentLimit).toLocaleString('id-ID')}.\nTransaksi dibatalkan demi mencegah saldo minus.`);
         return; 
       }
     }
 
+    const payload = {
+      category_id: parseInt(categoryId),
+      amount: inputAmount,
+      description: description || 'Tanpa keterangan',
+      date,
+      payment_method: paymentMethod
+    };
+
     try {
-      const response = await fetch(`${BACKEND_URL}/api/transactions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          category_id: parseInt(categoryId),
-          amount: inputAmount,
-          description: description || 'Tanpa keterangan',
-          date,
-          payment_method: paymentMethod
-        })
-      });
+      let response;
+      if (editingId) {
+        // Mode Perbarui (PUT)
+        response = await fetch(`${BACKEND_URL}/api/transactions/${editingId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } else {
+        // Mode Simpan Baru (POST)
+        response = await fetch(`${BACKEND_URL}/api/transactions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      }
 
       if (response.ok) {
-        setAmount('');
-        setDescription('');
+        resetForm();
         fetchData();
-        alert('✅ Catatan berhasil disimpan ke Cloud!');
+        alert(editingId ? '✅ Data berhasil diperbarui di Cloud!' : '✅ Catatan berhasil disimpan ke Cloud!');
       } else {
-        alert('Gagal menyimpan transaksi');
+        alert('Gagal memproses data ke server backend');
       }
     } catch (err) {
-      console.error('Eror simpan:', err);
+      console.error('Eror simpan/edit:', err);
     }
   };
 
-  // 8. 🔍 LOGIKA PENYARINGAN FILTER PERIODE (DROPDOWN BULANAN DAN KUSTOM TANGGAL)
+  // 🗑️ FUNGSI HAPUS DATA TRANSAKSI
+  const handleDelete = async (id, nominal, ket) => {
+    if (window.confirm(`Apakah Anda yakin ingin menghapus transaksi "${ket}" senilai Rp ${parseFloat(nominal).toLocaleString('id-ID')}?`)) {
+      try {
+        const response = await fetch(`${BACKEND_URL}/api/transactions/${id}`, {
+          method: 'DELETE'
+        });
+        if (response.ok) {
+          fetchData();
+          alert('🗑️ Catatan berhasil dihapus!');
+        } else {
+          alert('Gagal menghapus transaksi dari server');
+        }
+      } catch (err) {
+        console.error('Eror hapus:', err);
+      }
+    }
+  };
+
+  // ✏️ FUNGSI TRIGGER MASUK MODE EDIT
+  const startEdit = (t) => {
+    setEditingId(t.id);
+    setDate(t.date ? t.date.substring(0, 10) : new Date().toISOString().split('T')[0]);
+    setType(t.category_type || t.type || 'expense');
+    setCategoryId(t.category_id || '');
+    setAmount(t.amount || '');
+    setDescription(t.description || '');
+    setPaymentMethod(t.payment_method || 'cash');
+  };
+
+  const resetForm = () => {
+    setEditingId(null);
+    setAmount('');
+    setDescription('');
+    setDate(new Date().toISOString().split('T')[0]);
+    setType('expense');
+  };
+
+
+  // 8. 🔍 LOGIKA PENYARINGAN FILTER
   const filteredTransactions = transactions.filter(t => {
     if (!t.date) return false;
     
-    const rawDateStr = t.date.substring(0, 10); // Ambil format YYYY-MM-DD
+    const rawDateStr = t.date.substring(0, 10); 
     const transYear = rawDateStr.substring(0, 4);
     const transMonth = rawDateStr.substring(5, 7);
     const transType = t.category_type || t.type || '';
 
-    // A. Filter Waktu berdasarkan Mode yang dipilih
     if (filterRangeMode === 'dropdown') {
       if (filterYear !== 'all' && transYear !== filterYear) return false;
       if (filterMonth !== 'all' && transMonth !== filterMonth) return false;
     } else if (filterRangeMode === 'custom') {
-      // Saringan Tanggal Mulai s/d Selesai
       if (rawDateStr < startDate || rawDateStr > endDate) return false;
     }
 
-    // B. Filter Atribut Tambahan
     if (filterType !== 'all' && transType !== filterType) return false;
     if (filterCategory !== 'all' && String(t.category_id) !== filterCategory) return false;
     if (filterPaymentMethod !== 'all' && t.payment_method !== filterPaymentMethod) return false;
@@ -239,7 +297,6 @@ function App() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     
-    // Penamaan file dinamis berdasarkan mode filter aktif
     const fileName = filterRangeMode === 'dropdown' 
       ? `Laporan_Toko_Thn_${filterYear}_Bln_${filterMonth}.csv`
       : `Laporan_Toko_Periode_${startDate}_sd_${endDate}.csv`;
@@ -273,7 +330,7 @@ function App() {
 
       <div className="p-4 space-y-4">
         
-        {/* PANEL 1: SALDO AWAL */}
+        {/* PANEL DASHBOARD SALDO */}
         <div className="p-3.5 bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs font-bold">
           <div className="flex items-center gap-1.5 text-gray-400">
             <span>⏳</span> <span>SALDO AWAL BULAN ACUAN</span>
@@ -285,25 +342,21 @@ function App() {
           </div>
         </div>
 
-        {/* PANEL 2: MUTASI BULAN INI */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white border-l-4 border-emerald-500 p-4 rounded-xl shadow-sm border border-gray-200">
             <p className="text-[10px] uppercase font-bold text-emerald-600 tracking-wider mb-1">Pemasukan Bulan Ini</p>
             <p className="text-lg font-black text-emerald-700">Rp {totalMonthIncome.toLocaleString('id-ID')}</p>
           </div>
-
           <div className="bg-white border-l-4 border-rose-500 p-4 rounded-xl shadow-sm border border-gray-200">
             <p className="text-[10px] uppercase font-bold text-rose-600 tracking-wider mb-1">Pengeluaran Bulan Ini</p>
             <p className="text-lg font-black text-rose-700">Rp {totalMonthExpense.toLocaleString('id-ID')}</p>
           </div>
-
           <div className="bg-white border-l-4 border-blue-500 p-4 rounded-xl shadow-sm border border-gray-200">
             <p className="text-[10px] uppercase font-bold text-blue-600 tracking-wider mb-1">Saldo Berjalan Bulan Ini</p>
             <p className="text-lg font-black text-blue-700">Rp {totalMonthSaldo.toLocaleString('id-ID')}</p>
           </div>
         </div>
 
-        {/* PANEL 3: TOTAL REAL SALDO AKHIR FINAL */}
         <div className="p-4 bg-slate-900 text-white rounded-xl shadow-md grid grid-cols-1 md:grid-cols-3 gap-3 text-center text-xs font-bold">
           <div>
             <p className="text-slate-400 text-[10px] font-medium tracking-wider mb-0.5">💵 SALDO AKHIR CASH</p>
@@ -322,9 +375,18 @@ function App() {
         {/* WORKSPACE AREA */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
           
-          {/* FORM INPUT DATA */}
-          <form onSubmit={handleSubmit} className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 space-y-4 lg:col-span-1">
-            <h3 className="text-xs font-black text-gray-500 border-b pb-2 uppercase tracking-wide">✍️ Input Transaksi</h3>
+          {/* FORM INPUT DATA (DINAMIS MODE INPUT / EDIT) */}
+          <form onSubmit={handleSubmit} className={`bg-white p-5 rounded-xl shadow-sm border space-y-4 lg:col-span-1 transition-all ${editingId ? 'border-emerald-500 ring-1 ring-emerald-500/30' : 'border-gray-200'}`}>
+            <div className="flex justify-between items-center border-b pb-2">
+              <h3 className="text-xs font-black text-gray-500 uppercase tracking-wide">
+                {editingId ? '✏️ Mode Edit Transaksi' : '✍️ Input Transaksi'}
+              </h3>
+              {editingId && (
+                <button type="button" onClick={resetForm} className="text-[10px] bg-gray-200 hover:bg-gray-300 px-2 py-0.5 rounded font-bold text-gray-600">
+                  Batal
+                </button>
+              )}
+            </div>
             
             <div>
               <label className="block text-xs font-bold text-gray-600 mb-1">Tanggal</label>
@@ -359,12 +421,7 @@ function App() {
 
             <div>
               <label className="block text-xs font-bold text-gray-600 mb-1">Jumlah Uang (Rp)</label>
-              <input type="number" placeholder="Contoh: 50000" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-gray-50" />
-              {type === 'expense' && (
-                <p className="text-[10px] text-gray-500 mt-1">
-                  * Limit aman: <span className="text-red-600 font-bold">Rp {paymentMethod === 'cash' ? Math.max(0, realCurrentCashWallet).toLocaleString('id-ID') : Math.max(0, realCurrentBankWallet).toLocaleString('id-ID')}</span>
-                </p>
-              )}
+              <input type="number" placeholder="Contoh: 50000" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-gray-50 font-bold text-gray-700" />
             </div>
 
             <div>
@@ -372,41 +429,25 @@ function App() {
               <input type="text" placeholder="Keterangan barang" value={description} onChange={(e) => setDescription(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-gray-50" />
             </div>
 
-            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white p-2.5 rounded-lg text-xs font-black uppercase">
-              💾 Simpan Catatan
+            <button type="submit" className={`w-full text-white p-2.5 rounded-lg text-xs font-black uppercase tracking-wide transition-all ${editingId ? 'bg-emerald-600 hover:bg-emerald-700 shadow-md' : 'bg-blue-600 hover:bg-blue-700'}`}>
+              {editingId ? '🔄 Perbarui Catatan' : '💾 Simpan Catatan'}
             </button>
           </form>
 
-          {/* RIWAYAT LOG DATA & FILTER AREA */}
+          {/* AREA FILTER DAN LOG TABEL */}
           <div className="lg:col-span-2 space-y-4">
             
-            {/* PANEL FILTER UTAMA */}
+            {/* PANEL FILTER */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 space-y-3">
               <div className="flex justify-between items-center border-b pb-1.5">
                 <div className="text-[11px] font-black text-gray-400 uppercase tracking-wider">🔍 Saring Riwayat Pembukuan</div>
-                
-                {/* Switcher Mode Filter */}
                 <div className="flex bg-gray-100 p-0.5 rounded-lg border text-[10px] font-bold">
-                  <button 
-                    type="button" 
-                    onClick={() => setFilterRangeMode('dropdown')} 
-                    className={`px-2.5 py-1 rounded-md transition-all ${filterRangeMode === 'dropdown' ? 'bg-white text-blue-600 shadow-xs' : 'text-gray-400'}`}
-                  >
-                    Bulan & Tahun
-                  </button>
-                  <button 
-                    type="button" 
-                    onClick={() => setFilterRangeMode('custom')} 
-                    className={`px-2.5 py-1 rounded-md transition-all ${filterRangeMode === 'custom' ? 'bg-white text-blue-600 shadow-xs' : 'text-gray-400'}`}
-                  >
-                    Kustom Tanggal
-                  </button>
+                  <button type="button" onClick={() => setFilterRangeMode('dropdown')} className={`px-2.5 py-1 rounded-md transition-all ${filterRangeMode === 'dropdown' ? 'bg-white text-blue-600 shadow-xs' : 'text-gray-400'}`}>Bulan & Tahun</button>
+                  <button type="button" onClick={() => setFilterRangeMode('custom')} className={`px-2.5 py-1 rounded-md transition-all ${filterRangeMode === 'custom' ? 'bg-white text-blue-600 shadow-xs' : 'text-gray-400'}`}>Kustom Tanggal</button>
                 </div>
               </div>
               
-              {/* KOLOM OPERASIONAL FILTER TANGGAL */}
               <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                
                 {filterRangeMode === 'dropdown' ? (
                   <>
                     <div>
@@ -422,46 +463,26 @@ function App() {
                       <label className="block text-[9px] text-gray-400 font-bold uppercase mb-0.5">Bulan</label>
                       <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="w-full p-1.5 bg-gray-50 border rounded-lg text-xs font-bold text-gray-700">
                         <option value="all">📅 Semua Bulan</option>
-                        <option value="01">Januari</option>
-                        <option value="02">Februari</option>
-                        <option value="03">Maret</option>
-                        <option value="04">April</option>
-                        <option value="05">Mei</option>
-                        <option value="06">Juni</option>
-                        <option value="07">Juli</option>
-                        <option value="08">Agustus</option>
-                        <option value="09">September</option>
-                        <option value="10">Oktober</option>
-                        <option value="11">November</option>
-                        <option value="12">Desember</option>
+                        <option value="01">Januari</option><option value="02">Februari</option><option value="03">Maret</option>
+                        <option value="04">April</option><option value="05">Mei</option><option value="06">Juni</option>
+                        <option value="07">Juli</option><option value="08">Agustus</option><option value="09">September</option>
+                        <option value="10">Oktober</option><option value="11">November</option><option value="12">Desember</option>
                       </select>
                     </div>
                   </>
                 ) : (
-                  /* 📅 FITUR CUSTOM TANGGAL: PILIHAN DARI SAMPAI DENGAN TANGGAL BERFUNGSI AKTIF */
                   <>
                     <div>
                       <label className="block text-[9px] text-gray-400 font-bold uppercase mb-0.5">Dari Tanggal</label>
-                      <input 
-                        type="date" 
-                        value={startDate} 
-                        onChange={(e) => setStartDate(e.target.value)} 
-                        className="w-full p-1 bg-gray-50 border border-gray-300 rounded-lg text-xs font-bold text-gray-700" 
-                      />
+                      <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full p-1 bg-gray-50 border border-gray-300 rounded-lg text-xs font-bold text-gray-700" />
                     </div>
                     <div>
                       <label className="block text-[9px] text-gray-400 font-bold uppercase mb-0.5">Sampai Tanggal</label>
-                      <input 
-                        type="date" 
-                        value={endDate} 
-                        onChange={(e) => setEndDate(e.target.value)} 
-                        className="w-full p-1 bg-gray-50 border border-gray-300 rounded-lg text-xs font-bold text-gray-700" 
-                      />
+                      <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full p-1 bg-gray-50 border border-gray-300 rounded-lg text-xs font-bold text-gray-700" />
                     </div>
                   </>
                 )}
 
-                {/* Filter Jenis */}
                 <div>
                   <label className="block text-[9px] text-gray-400 font-bold uppercase mb-0.5">Jenis</label>
                   <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="w-full p-1.5 bg-gray-50 border rounded-lg text-xs text-gray-600 font-medium">
@@ -470,19 +491,13 @@ function App() {
                     <option value="expense">📉 Keluar</option>
                   </select>
                 </div>
-
-                {/* Filter Kategori */}
                 <div>
                   <label className="block text-[9px] text-gray-400 font-bold uppercase mb-0.5">Kategori</label>
                   <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="w-full p-1.5 bg-gray-50 border rounded-lg text-xs text-gray-600 font-medium">
                     <option value="all">📁 Semua</option>
-                    {categories.map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
+                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
-
-                {/* Filter Metode */}
                 <div>
                   <label className="block text-[9px] text-gray-400 font-bold uppercase mb-0.5">Metode</label>
                   <select value={filterPaymentMethod} onChange={(e) => setFilterPaymentMethod(e.target.value)} className="w-full p-1.5 bg-gray-50 border rounded-lg text-xs text-gray-600 font-medium">
@@ -494,18 +509,14 @@ function App() {
               </div>
             </div>
 
-            {/* TABEL DATA UTAMA */}
+            {/* TABEL DATA RIWAYAT */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
               <div className="flex justify-between items-center mb-3">
                 <div className="flex items-center gap-1">
                   <span className="text-sm">📋</span>
                   <h2 className="text-xs font-black text-gray-700 uppercase">Log Riwayat Transaksi</h2>
                 </div>
-                
-                <button 
-                  onClick={handleExportToExcel}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] px-3 py-1.5 rounded-lg flex items-center gap-1 transition"
-                >
+                <button onClick={handleExportToExcel} className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] px-3 py-1.5 rounded-lg flex items-center gap-1 transition">
                   🟢 Export Excel (.CSV)
                 </button>
               </div>
@@ -519,18 +530,19 @@ function App() {
                       <th className="pb-2">Metode</th>
                       <th className="pb-2">Keterangan</th>
                       <th className="pb-2 text-right">Nominal</th>
+                      <th className="pb-2 text-center w-[80px]">Aksi</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredTransactions.length === 0 ? (
                       <tr>
-                        <td colSpan="5" className="p-4 text-center text-gray-400 italic">Tidak ada data transaksi yang cocok.</td>
+                        <td colSpan="6" className="p-4 text-center text-gray-400 italic">Tidak ada data transaksi yang cocok.</td>
                       </tr>
                     ) : (
                       [...filteredTransactions].sort((a,b) => b.date.localeCompare(a.date)).map((t) => {
                         const isIncome = t.category_type === 'income' || t.type === 'income';
                         return (
-                          <tr key={t.id} className="border-b hover:bg-gray-50 text-[11px]">
+                          <tr key={t.id} className={`border-b hover:bg-gray-50 text-[11px] ${editingId === t.id ? 'bg-amber-50/70 hover:bg-amber-50' : ''}`}>
                             <td className="py-2.5 text-gray-500">
                               {t.date ? new Date(t.date).toLocaleDateString('id-ID', {day: 'numeric', month: 'short'}) : '-'}
                             </td>
@@ -538,9 +550,29 @@ function App() {
                               <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px]">{t.category_name || 'Umum'}</span>
                             </td>
                             <td className="py-2.5 font-bold text-gray-500 uppercase">{t.payment_method}</td>
-                            <td className="py-2.5 text-gray-700 truncate max-w-[120px]">{t.description || '-'}</td>
+                            <td className="py-2.5 text-gray-700 truncate max-w-[100px]">{t.description || '-'}</td>
                             <td className={`py-2.5 text-right font-black ${isIncome ? 'text-emerald-600' : 'text-rose-600'}`}>
                               {isIncome ? '+ ' : '- '}Rp {parseFloat(t.amount || 0).toLocaleString('id-ID')}
+                            </td>
+                            
+                            {/* TOMBOL EDIT & HAPUS */}
+                            <td className="py-2.5 text-center">
+                              <div className="flex justify-center gap-1.5">
+                                <button 
+                                  onClick={() => startEdit(t)} 
+                                  title="Edit Catatan"
+                                  className="p-1 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition"
+                                >
+                                  ✏️
+                                </button>
+                                <button 
+                                  onClick={() => handleDelete(t.id, t.amount, t.description)} 
+                                  title="Hapus Catatan"
+                                  className="p-1 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded transition"
+                                >
+                                  🗑️
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
