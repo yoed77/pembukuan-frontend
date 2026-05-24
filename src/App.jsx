@@ -18,9 +18,13 @@ function App() {
   const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
   const [selectedMonth, setSelectedMonth] = useState(`${currentYear}-${currentMonth}`);
 
-  // 4. STATE FILTER PENCARIAN LOG TABEL (TAHUN & BULAN TERPISAH)
+  // 4. STATE FILTER PENCARIAN LOG TABEL (FIXED TANGGAL & BULAN)
+  const [filterRangeMode, setFilterRangeMode] = useState('dropdown'); // 'dropdown' atau 'custom'
   const [filterYear, setFilterYear] = useState(currentYear);
-  const [filterMonth, setFilterMonth] = useState(currentMonth); // "all" atau "01"-"12"
+  const [filterMonth, setFilterMonth] = useState(currentMonth); 
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  
   const [filterType, setFilterType] = useState('all'); 
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterPaymentMethod, setFilterPaymentMethod] = useState('all');
@@ -77,7 +81,7 @@ function App() {
   const realCurrentBankWallet = totalIncomeBankAllTime - totalExpenseBankAllTime;
 
 
-  // --- PERHITUNGAN UNTUK DATA DASHBOARD (BERDASARKAN ACUAN BULANAN DI ATAS) ---
+  // --- PERHITUNGAN UNTUK DATA DASHBOARD BULAN ACUAN DI ATAS ---
   const priorTransactions = transactions.filter(t => {
     if (!t.date) return false;
     return t.date.substring(0, 7) < selectedMonth;
@@ -180,21 +184,24 @@ function App() {
     }
   };
 
-  // 8. 🔍 LOGIKA PENYARINGAN RIWAYAT TABEL (BERDASARKAN TAHUN DAN BULAN TERPISAH)
+  // 8. 🔍 LOGIKA PENYARINGAN RIWAYAT (FIXED: PERIODE DROPDOWN vs KUSTOM TANGGAL)
   const filteredTransactions = transactions.filter(t => {
     if (!t.date) return false;
-    const transDate = new Date(t.date);
-    const transYear = String(transDate.getFullYear());
-    const transMonth = String(transDate.getMonth() + 1).padStart(2, '0');
+    
+    const rawDateStr = t.date.substring(0, 10); // Format "YYYY-MM-DD"
+    const transYear = rawDateStr.substring(0, 4);
+    const transMonth = rawDateStr.substring(5, 7);
     const transType = t.category_type || t.type || '';
 
-    // Filter Tahun
-    if (filterYear !== 'all' && transYear !== filterYear) return false;
+    // A. FILTER RENTANG WAKTU (DROPDOWN VS CUSTOM TANGGAL)
+    if (filterRangeMode === 'dropdown') {
+      if (filterYear !== 'all' && transYear !== filterYear) return false;
+      if (filterMonth !== 'all' && transMonth !== filterMonth) return false;
+    } else if (filterRangeMode === 'custom') {
+      if (rawDateStr < startDate || rawDateStr > endDate) return false;
+    }
 
-    // Filter Bulan
-    if (filterMonth !== 'all' && transMonth !== filterMonth) return false;
-
-    // Filter Atribut Lainnya
+    // B. FILTER ATRIBUT LAINNYA
     if (filterType !== 'all' && transType !== filterType) return false;
     if (filterCategory !== 'all' && String(t.category_id) !== filterCategory) return false;
     if (filterPaymentMethod !== 'all' && t.payment_method !== filterPaymentMethod) return false;
@@ -203,7 +210,7 @@ function App() {
   });
 
 
-  // 9. 📥 FUNGSI EXPORT DATA KE EXCEL (.CSV SEMICOLON SEPARATED)
+  // 9. 📥 FUNGSI EXPORT DATA KE EXCEL
   const handleExportToExcel = () => {
     if (filteredTransactions.length === 0) {
       alert("Tidak ada data untuk diexport!");
@@ -231,7 +238,7 @@ function App() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Laporan_Toko_Thn_${filterYear}_Bln_${filterMonth}.csv`);
+    link.setAttribute("download", `Laporan_Pencatatan_Toko.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -358,7 +365,7 @@ function App() {
               <input type="text" placeholder="Keterangan barang" value={description} onChange={(e) => setDescription(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-gray-50" />
             </div>
 
-            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white p-2.5 rounded-lg text-xs font-black uppercase animate-pulse">
+            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white p-2.5 rounded-lg text-xs font-black uppercase">
               💾 Simpan Catatan
             </button>
           </form>
@@ -366,41 +373,76 @@ function App() {
           {/* RIWAYAT LOG DATA */}
           <div className="lg:col-span-2 space-y-4">
             
-            {/* 🛠️ BARU: FILTER PERIODE TAHUN & BULAN YANG DIPISAH */}
+            {/* PANEL FILTER SEARCH */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 space-y-3">
-              <div className="text-[11px] font-black text-gray-400 uppercase tracking-wider">🔍 Panel Saring Riwayat Pembukuan</div>
               
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                {/* Filter Tahun */}
-                <div>
-                  <label className="block text-[9px] text-gray-400 font-bold uppercase mb-0.5">Tahun</label>
-                  <select value={filterYear} onChange={(e) => setFilterYear(e.target.value)} className="w-full p-1.5 bg-gray-50 border rounded-lg text-xs font-bold text-gray-700">
-                    <option value="all">🌐 Semua Tahun</option>
-                    <option value="2025">2025</option>
-                    <option value="2026">2026</option>
-                    <option value="2027">2027</option>
-                  </select>
+              {/* TOMBOL TOGGLE MODE RANGE WAKTU */}
+              <div className="flex justify-between items-center border-b pb-1.5">
+                <div className="text-[11px] font-black text-gray-400 uppercase">🔍 Panel Saring Riwayat</div>
+                <div className="flex bg-gray-100 p-0.5 rounded-lg border text-[10px] font-bold">
+                  <button 
+                    type="button" 
+                    onClick={() => setFilterRangeMode('dropdown')} 
+                    className={`px-2.5 py-1 rounded-md transition-all ${filterRangeMode === 'dropdown' ? 'bg-white text-blue-600 shadow-xs' : 'text-gray-400'}`}
+                  >
+                    Bulan & Tahun
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => setFilterRangeMode('custom')} 
+                    className={`px-2.5 py-1 rounded-md transition-all ${filterRangeMode === 'custom' ? 'bg-white text-blue-600 shadow-xs' : 'text-gray-400'}`}
+                  >
+                    Kustom Tanggal
+                  </button>
                 </div>
-
-                {/* Filter Bulan */}
-                <div>
-                  <label className="block text-[9px] text-gray-400 font-bold uppercase mb-0.5">Bulan</label>
-                  <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="w-full p-1.5 bg-gray-50 border rounded-lg text-xs font-bold text-gray-700">
-                    <option value="all">📅 Semua Bulan</option>
-                    <option value="01">Januari</option>
-                    <option value="02">Februari</option>
-                    <option value="03">Maret</option>
-                    <option value="04">April</option>
-                    <option value="05">Mei</option>
-                    <option value="06">Juni</option>
-                    <option value="07">Juli</option>
-                    <option value="08">Agustus</option>
-                    <option value="09">September</option>
-                    <option value="10">Oktober</option>
-                    <option value="11">November</option>
-                    <option value="12">Desember</option>
-                  </select>
-                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                
+                {/* JIKA USER PILIH MODE DROPDOWN TAHUN & BULAN */}
+                {filterRangeMode === 'dropdown' ? (
+                  <>
+                    <div>
+                      <label className="block text-[9px] text-gray-400 font-bold uppercase mb-0.5">Tahun</label>
+                      <select value={filterYear} onChange={(e) => setFilterYear(e.target.value)} className="w-full p-1.5 bg-gray-50 border rounded-lg text-xs font-bold text-gray-700">
+                        <option value="all">🌐 Semua Tahun</option>
+                        <option value="2025">2025</option>
+                        <option value="2026">2026</option>
+                        <option value="2027">2027</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[9px] text-gray-400 font-bold uppercase mb-0.5">Bulan</label>
+                      <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="w-full p-1.5 bg-gray-50 border rounded-lg text-xs font-bold text-gray-700">
+                        <option value="all">📅 Semua Bulan</option>
+                        <option value="01">Januari</option>
+                        <option value="02">Februari</option>
+                        <option value="03">Maret</option>
+                        <option value="04">April</option>
+                        <option value="05">Mei</option>
+                        <option value="06">Juni</option>
+                        <option value="07">Juli</option>
+                        <option value="08">Agustus</option>
+                        <option value="09">September</option>
+                        <option value="10">Oktober</option>
+                        <option value="11">November</option>
+                        <option value="12">Desember</option>
+                      </select>
+                    </div>
+                  </>
+                ) : (
+                  /* JIKA USER PILIH MODE INPUT KUSTOM TANGGAL (FIXED & WORKS!) */
+                  <>
+                    <div>
+                      <label className="block text-[9px] text-gray-400 font-bold uppercase mb-0.5">Dari Tanggal</label>
+                      <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full p-1 bg-gray-50 border rounded-lg text-xs font-medium" />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] text-gray-400 font-bold uppercase mb-0.5">Sampai Tanggal</label>
+                      <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full p-1 bg-gray-50 border rounded-lg text-xs font-medium" />
+                    </div>
+                  </>
+                )}
 
                 {/* Filter Jenis */}
                 <div>
@@ -409,17 +451,6 @@ function App() {
                     <option value="all">🔄 Semua</option>
                     <option value="income">📈 Masuk</option>
                     <option value="expense">📉 Keluar</option>
-                  </select>
-                </div>
-
-                {/* Filter Kategori */}
-                <div>
-                  <label className="block text-[9px] text-gray-400 font-bold uppercase mb-0.5">Kategori</label>
-                  <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="w-full p-1.5 bg-gray-50 border rounded-lg text-xs text-gray-600 font-medium">
-                    <option value="all">📁 Semua</option>
-                    {categories.map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
                   </select>
                 </div>
 
@@ -443,7 +474,6 @@ function App() {
                   <h2 className="text-xs font-black text-gray-700 uppercase">Log Riwayat Transaksi</h2>
                 </div>
                 
-                {/* TOMBOL EXPORT EXCEL BERDASARKAN HASIL FILTER */}
                 <button 
                   onClick={handleExportToExcel}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] px-3 py-1.5 rounded-lg flex items-center gap-1 transition"
