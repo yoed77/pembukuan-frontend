@@ -18,7 +18,7 @@ function App() {
   const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
   const [selectedMonth, setSelectedMonth] = useState(`${currentYear}-${currentMonth}`);
 
-  // 4. STATE FILTER PENCARIAN LOG TABEL (FIXED TANGGAL & BULAN)
+  // 4. STATE FILTER PENCARIAN LOG TABEL (TAHUN/BULAN & PERIODE TANGGAL)
   const [filterRangeMode, setFilterRangeMode] = useState('dropdown'); // 'dropdown' atau 'custom'
   const [filterYear, setFilterYear] = useState(currentYear);
   const [filterMonth, setFilterMonth] = useState(currentMonth); 
@@ -81,7 +81,7 @@ function App() {
   const realCurrentBankWallet = totalIncomeBankAllTime - totalExpenseBankAllTime;
 
 
-  // --- PERHITUNGAN UNTUK DATA DASHBOARD BULAN ACUAN DI ATAS ---
+  // --- PERHITUNGAN DATA DASHBOARD ATAS ---
   const priorTransactions = transactions.filter(t => {
     if (!t.date) return false;
     return t.date.substring(0, 7) < selectedMonth;
@@ -137,7 +137,7 @@ function App() {
   const finalTotal = finalCash + finalBank;
 
 
-  // 7. 🔥 HANDLER SIMPAN TRANSAKSI (SISTEM CEK SALDO KAS-BON)
+  // 7. 🔥 HANDLER SIMPAN TRANSAKSI + CEK TOTAL SALDO MINUS
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!categoryId || !amount) {
@@ -184,24 +184,25 @@ function App() {
     }
   };
 
-  // 8. 🔍 LOGIKA PENYARINGAN RIWAYAT (FIXED: PERIODE DROPDOWN vs KUSTOM TANGGAL)
+  // 8. 🔍 LOGIKA PENYARINGAN FILTER PERIODE (DROPDOWN BULANAN DAN KUSTOM TANGGAL)
   const filteredTransactions = transactions.filter(t => {
     if (!t.date) return false;
     
-    const rawDateStr = t.date.substring(0, 10); // Format "YYYY-MM-DD"
+    const rawDateStr = t.date.substring(0, 10); // Ambil format YYYY-MM-DD
     const transYear = rawDateStr.substring(0, 4);
     const transMonth = rawDateStr.substring(5, 7);
     const transType = t.category_type || t.type || '';
 
-    // A. FILTER RENTANG WAKTU (DROPDOWN VS CUSTOM TANGGAL)
+    // A. Filter Waktu berdasarkan Mode yang dipilih
     if (filterRangeMode === 'dropdown') {
       if (filterYear !== 'all' && transYear !== filterYear) return false;
       if (filterMonth !== 'all' && transMonth !== filterMonth) return false;
     } else if (filterRangeMode === 'custom') {
+      // Saringan Tanggal Mulai s/d Selesai
       if (rawDateStr < startDate || rawDateStr > endDate) return false;
     }
 
-    // B. FILTER ATRIBUT LAINNYA
+    // B. Filter Atribut Tambahan
     if (filterType !== 'all' && transType !== filterType) return false;
     if (filterCategory !== 'all' && String(t.category_id) !== filterCategory) return false;
     if (filterPaymentMethod !== 'all' && t.payment_method !== filterPaymentMethod) return false;
@@ -210,7 +211,7 @@ function App() {
   });
 
 
-  // 9. 📥 FUNGSI EXPORT DATA KE EXCEL
+  // 9. 📥 FUNGSI EXPORT DATA FILTER KE EXCEL
   const handleExportToExcel = () => {
     if (filteredTransactions.length === 0) {
       alert("Tidak ada data untuk diexport!");
@@ -237,8 +238,14 @@ function App() {
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
+    
+    // Penamaan file dinamis berdasarkan mode filter aktif
+    const fileName = filterRangeMode === 'dropdown' 
+      ? `Laporan_Toko_Thn_${filterYear}_Bln_${filterMonth}.csv`
+      : `Laporan_Toko_Periode_${startDate}_sd_${endDate}.csv`;
+
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Laporan_Pencatatan_Toko.csv`);
+    link.setAttribute("download", fileName);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -370,15 +377,15 @@ function App() {
             </button>
           </form>
 
-          {/* RIWAYAT LOG DATA */}
+          {/* RIWAYAT LOG DATA & FILTER AREA */}
           <div className="lg:col-span-2 space-y-4">
             
-            {/* PANEL FILTER SEARCH */}
+            {/* PANEL FILTER UTAMA */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 space-y-3">
-              
-              {/* TOMBOL TOGGLE MODE RANGE WAKTU */}
               <div className="flex justify-between items-center border-b pb-1.5">
-                <div className="text-[11px] font-black text-gray-400 uppercase">🔍 Panel Saring Riwayat</div>
+                <div className="text-[11px] font-black text-gray-400 uppercase tracking-wider">🔍 Saring Riwayat Pembukuan</div>
+                
+                {/* Switcher Mode Filter */}
                 <div className="flex bg-gray-100 p-0.5 rounded-lg border text-[10px] font-bold">
                   <button 
                     type="button" 
@@ -397,9 +404,9 @@ function App() {
                 </div>
               </div>
               
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {/* KOLOM OPERASIONAL FILTER TANGGAL */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                 
-                {/* JIKA USER PILIH MODE DROPDOWN TAHUN & BULAN */}
                 {filterRangeMode === 'dropdown' ? (
                   <>
                     <div>
@@ -431,15 +438,25 @@ function App() {
                     </div>
                   </>
                 ) : (
-                  /* JIKA USER PILIH MODE INPUT KUSTOM TANGGAL (FIXED & WORKS!) */
+                  /* 📅 FITUR CUSTOM TANGGAL: PILIHAN DARI SAMPAI DENGAN TANGGAL BERFUNGSI AKTIF */
                   <>
                     <div>
                       <label className="block text-[9px] text-gray-400 font-bold uppercase mb-0.5">Dari Tanggal</label>
-                      <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full p-1 bg-gray-50 border rounded-lg text-xs font-medium" />
+                      <input 
+                        type="date" 
+                        value={startDate} 
+                        onChange={(e) => setStartDate(e.target.value)} 
+                        className="w-full p-1 bg-gray-50 border border-gray-300 rounded-lg text-xs font-bold text-gray-700" 
+                      />
                     </div>
                     <div>
                       <label className="block text-[9px] text-gray-400 font-bold uppercase mb-0.5">Sampai Tanggal</label>
-                      <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full p-1 bg-gray-50 border rounded-lg text-xs font-medium" />
+                      <input 
+                        type="date" 
+                        value={endDate} 
+                        onChange={(e) => setEndDate(e.target.value)} 
+                        className="w-full p-1 bg-gray-50 border border-gray-300 rounded-lg text-xs font-bold text-gray-700" 
+                      />
                     </div>
                   </>
                 )}
@@ -451,6 +468,17 @@ function App() {
                     <option value="all">🔄 Semua</option>
                     <option value="income">📈 Masuk</option>
                     <option value="expense">📉 Keluar</option>
+                  </select>
+                </div>
+
+                {/* Filter Kategori */}
+                <div>
+                  <label className="block text-[9px] text-gray-400 font-bold uppercase mb-0.5">Kategori</label>
+                  <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="w-full p-1.5 bg-gray-50 border rounded-lg text-xs text-gray-600 font-medium">
+                    <option value="all">📁 Semua</option>
+                    {categories.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
                   </select>
                 </div>
 
