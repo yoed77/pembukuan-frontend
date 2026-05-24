@@ -7,20 +7,20 @@ function App() {
   
   // 2. STATE FORM INPUT TRANSAKSI BARU
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [type, setType] = useState('expense'); // 'income' atau 'expense'
+  const [type, setType] = useState('expense'); 
   const [categoryId, setCategoryId] = useState('');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
 
-  // 3. STATE ACUAN DASHBOARD BULANAN
-  const currentYearMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-  const [selectedMonth, setSelectedMonth] = useState(currentYearMonth);
+  // 3. STATE ACUAN DASHBOARD UTAMA (BULANAN)
+  const currentYear = String(new Date().getFullYear());
+  const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
+  const [selectedMonth, setSelectedMonth] = useState(`${currentYear}-${currentMonth}`);
 
-  // 4. STATE FILTER PENCARIAN LOG TABEL BAWAH
-  const [filterMode, setFilterMode] = useState('month'); 
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  // 4. STATE FILTER PENCARIAN LOG TABEL (TAHUN & BULAN TERPISAH)
+  const [filterYear, setFilterYear] = useState(currentYear);
+  const [filterMonth, setFilterMonth] = useState(currentMonth); // "all" atau "01"-"12"
   const [filterType, setFilterType] = useState('all'); 
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterPaymentMethod, setFilterPaymentMethod] = useState('all');
@@ -56,9 +56,7 @@ function App() {
   }, [type, categories]);
 
 
-  // 6. 🧮 LOGIKA PERHITUNGAN SALDO REAL KUMULATIF AKTIF (KUNCI ANTI-MINUS)
-  
-  // Hitung SEMUA transaksi dari awal mula waktu sampai detik ini untuk tahu dompet riil
+  // 6. 🧮 LOGIKA PERHITUNGAN SALDO REAL KUMULATIF (STRICT ANTI-MINUS)
   const totalIncomeCashAllTime = transactions
     .filter(t => (t.category_type === 'income' || t.type === 'income') && t.payment_method === 'cash')
     .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
@@ -75,12 +73,11 @@ function App() {
     .filter(t => (t.category_type === 'expense' || t.type === 'expense') && t.payment_method === 'bank')
     .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
 
-  // Ini adalah sisa uang murni yang tersisa di laci / rekening saat ini
   const realCurrentCashWallet = totalIncomeCashAllTime - totalExpenseCashAllTime;
   const realCurrentBankWallet = totalIncomeBankAllTime - totalExpenseBankAllTime;
 
 
-  // --- PERHITUNGAN KHUSUS UNTUK TAMPILAN DASHBOARD BULANAN ---
+  // --- PERHITUNGAN UNTUK DATA DASHBOARD (BERDASARKAN ACUAN BULANAN DI ATAS) ---
   const priorTransactions = transactions.filter(t => {
     if (!t.date) return false;
     return t.date.substring(0, 7) < selectedMonth;
@@ -102,7 +99,6 @@ function App() {
     .filter(t => (t.category_type === 'expense' || t.type === 'expense') && t.payment_method === 'bank')
     .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
 
-  // Amankan Saldo Awal agar tidak merusak tampilan dashboard
   const initialCash = Math.max(0, priorIncomeCash - priorExpenseCash);
   const initialBank = Math.max(0, priorIncomeBank - priorExpenseBank);
   const initialTotal = initialCash + initialBank;
@@ -130,8 +126,6 @@ function App() {
 
   const totalMonthIncome = currentIncomeCash + currentIncomeBank;
   const totalMonthExpense = currentExpenseCash + currentExpenseBank;
-  
-  // FIX MINUS BULAN BERJALAN: Menampilkan angka 0 jika operasional bulan ini minus
   const totalMonthSaldo = Math.max(0, totalMonthIncome - totalMonthExpense);
 
   const finalCash = Math.max(0, initialCash + currentIncomeCash - currentExpenseCash);
@@ -139,7 +133,7 @@ function App() {
   const finalTotal = finalCash + finalBank;
 
 
-  // 7. 🔥 HANDLER SIMPAN TRANSAKSI + GEBOK ANTI MINUS (STRICT MODE)
+  // 7. 🔥 HANDLER SIMPAN TRANSAKSI (SISTEM CEK SALDO KAS-BON)
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!categoryId || !amount) {
@@ -150,7 +144,6 @@ function App() {
     const inputAmount = parseFloat(amount);
 
     if (type === 'expense') {
-      // Validasi mutlak mengacu pada kapasitas isi dompet sebenarnya (All-Time)
       if (paymentMethod === 'cash' && inputAmount > realCurrentCashWallet) {
         alert(`❌ INPUT DITOLAK!\nSisa Uang Cash riil Anda sekarang tinggal Rp ${Math.max(0, realCurrentCashWallet).toLocaleString('id-ID')}.\nTidak boleh menginput pengeluaran sebesar Rp ${inputAmount.toLocaleString('id-ID')} (Menyebabkan Kas Minus).`);
         return; 
@@ -187,45 +180,38 @@ function App() {
     }
   };
 
-  // 8. LOGIKA FILTER PENYARINGAN RIWAYAT TABEL BAWAH
+  // 8. 🔍 LOGIKA PENYARINGAN RIWAYAT TABEL (BERDASARKAN TAHUN DAN BULAN TERPISAH)
   const filteredTransactions = transactions.filter(t => {
     if (!t.date) return false;
-    const rawDate = t.date.substring(0, 10);
+    const transDate = new Date(t.date);
+    const transYear = String(transDate.getFullYear());
+    const transMonth = String(transDate.getMonth() + 1).padStart(2, '0');
     const transType = t.category_type || t.type || '';
 
-    if (filterMode === 'month') {
-      if (rawDate.substring(0, 7) !== selectedMonth) return false;
-    } else if (filterMode === 'range') {
-      if (rawDate < startDate || rawDate > endDate) return false;
-    }
+    // Filter Tahun
+    if (filterYear !== 'all' && transYear !== filterYear) return false;
 
-    if (filterType !== 'all') {
-      if (transType !== filterType) return false;
-    }
+    // Filter Bulan
+    if (filterMonth !== 'all' && transMonth !== filterMonth) return false;
 
-    if (filterCategory !== 'all') {
-      if (String(t.category_id) !== filterCategory) return false;
-    }
-
-    if (filterPaymentMethod !== 'all') {
-      if (t.payment_method !== filterPaymentMethod) return false;
-    }
+    // Filter Atribut Lainnya
+    if (filterType !== 'all' && transType !== filterType) return false;
+    if (filterCategory !== 'all' && String(t.category_id) !== filterCategory) return false;
+    if (filterPaymentMethod !== 'all' && t.payment_method !== filterPaymentMethod) return false;
 
     return true;
   });
 
 
-  // 9. 📥 FUNGSI EXPORT DATA KE EXCEL (CSV FORMAT)
+  // 9. 📥 FUNGSI EXPORT DATA KE EXCEL (.CSV SEMICOLON SEPARATED)
   const handleExportToExcel = () => {
     if (filteredTransactions.length === 0) {
       alert("Tidak ada data untuk diexport!");
       return;
     }
 
-    // Judul Header Kolom Excel
     const headers = ["Tanggal", "Kategori", "Metode", "Keterangan", "Nominal (Rp)"];
     
-    // Mapping isi baris data
     const rows = [...filteredTransactions]
       .sort((a,b) => b.date.localeCompare(a.date))
       .map(t => {
@@ -239,19 +225,17 @@ function App() {
         ];
       });
 
-    // Gabungkan header dan data dengan pemisah koma / semikolon standar excel
     const csvContent = "data:text/csv;charset=utf-8," 
       + [headers.join(";"), ...rows.map(e => e.join(";"))].join("\n");
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Laporan_Keuangan_${selectedMonth}.csv`);
+    link.setAttribute("download", `Laporan_Toko_Thn_${filterYear}_Bln_${filterMonth}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
-
 
   return (
     <div className="max-w-4xl mx-auto bg-gray-50 min-h-screen pb-12 font-sans antialiased text-gray-800">
@@ -263,7 +247,7 @@ function App() {
           <h1 className="text-xl font-black tracking-tight text-blue-600">Pencatatan Keuangan Toko</h1>
         </div>
         <div className="flex items-center gap-2 bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-xl">
-          <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">ACUAN BULAN:</span>
+          <span className="text-xs font-bold text-gray-500">DASHBOARD ACUAN:</span>
           <input 
             type="month" 
             value={selectedMonth}
@@ -278,7 +262,7 @@ function App() {
         {/* PANEL 1: SALDO AWAL */}
         <div className="p-3.5 bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs font-bold">
           <div className="flex items-center gap-1.5 text-gray-400">
-            <span>⏳</span> <span>SALDO AWAL BULAN INI</span>
+            <span>⏳</span> <span>SALDO AWAL BULAN ACUAN</span>
           </div>
           <div className="flex flex-wrap gap-4 text-xs">
             <span className="text-gray-500">💵 Cash: <b className="text-gray-800 font-extrabold">Rp {initialCash.toLocaleString('id-ID')}</b></span>
@@ -287,7 +271,7 @@ function App() {
           </div>
         </div>
 
-        {/* PANEL 2: MUTASI BULAN INI (PROTECTED ANTI MINUS) */}
+        {/* PANEL 2: MUTASI BULAN INI */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white border-l-4 border-emerald-500 p-4 rounded-xl shadow-sm border border-gray-200">
             <p className="text-[10px] uppercase font-bold text-emerald-600 tracking-wider mb-1">Pemasukan Bulan Ini</p>
@@ -306,30 +290,27 @@ function App() {
         </div>
 
         {/* PANEL 3: TOTAL REAL SALDO AKHIR FINAL */}
-        <div className="p-4 bg-slate-900 text-white rounded-xl shadow-md grid grid-cols-1 md:grid-cols-3 gap-3 text-center text-xs font-bold divide-y md:divide-y-0 md:divide-x divide-slate-800">
-          <div className="py-1">
-            <p className="text-slate-400 text-[10px] font-medium uppercase tracking-wider mb-0.5">💵 SALDO AKHIR CASH</p>
+        <div className="p-4 bg-slate-900 text-white rounded-xl shadow-md grid grid-cols-1 md:grid-cols-3 gap-3 text-center text-xs font-bold">
+          <div>
+            <p className="text-slate-400 text-[10px] font-medium tracking-wider mb-0.5">💵 SALDO AKHIR CASH</p>
             <p className="text-amber-400 text-base font-black">Rp {finalCash.toLocaleString('id-ID')}</p>
           </div>
-          <div className="py-1">
-            <p className="text-slate-400 text-[10px] font-medium uppercase tracking-wider mb-0.5">🏦 SALDO AKHIR BANK</p>
+          <div>
+            <p className="text-slate-400 text-[10px] font-medium tracking-wider mb-0.5">🏦 SALDO AKHIR BANK</p>
             <p className="text-sky-400 text-base font-black">Rp {finalBank.toLocaleString('id-ID')}</p>
           </div>
-          <div className="py-1">
-            <p className="text-slate-300 text-[10px] font-black uppercase tracking-wider mb-0.5">🎯 TOTAL REAL SALDO AKHIR</p>
+          <div>
+            <p className="text-slate-300 text-[10px] font-black tracking-wider mb-0.5">🎯 TOTAL REAL SALDO AKHIR</p>
             <p className="text-white text-lg font-black">Rp {finalTotal.toLocaleString('id-ID')}</p>
           </div>
         </div>
 
-        {/* WORKSPACE WORK */}
+        {/* WORKSPACE AREA */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
           
-          {/* FORM INPUT DENGAN ANTI MINUS VALIDATOR */}
+          {/* FORM INPUT DATA */}
           <form onSubmit={handleSubmit} className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 space-y-4 lg:col-span-1">
-            <div className="flex justify-between items-center border-b pb-2">
-              <h3 className="text-xs font-black text-gray-500 uppercase tracking-wide">✍️ Input Transaksi</h3>
-              <span className="text-[9px] bg-red-50 text-red-700 border border-red-200 px-1.5 py-0.5 rounded-sm font-bold">STRICT SYSTEM</span>
-            </div>
+            <h3 className="text-xs font-black text-gray-500 border-b pb-2 uppercase tracking-wide">✍️ Input Transaksi</h3>
             
             <div>
               <label className="block text-xs font-bold text-gray-600 mb-1">Tanggal</label>
@@ -346,7 +327,7 @@ function App() {
 
             <div>
               <label className="block text-xs font-bold text-gray-600 mb-1">Kategori</label>
-              <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg bg-white text-xs text-gray-700">
+              <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg bg-white text-xs">
                 <option value="">-- Pilih Kategori --</option>
                 {categories.filter(c => c.type === type).map(c => (
                   <option key={c.id} value={c.id}>📁 {c.name}</option>
@@ -367,7 +348,7 @@ function App() {
               <input type="number" placeholder="Contoh: 50000" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-gray-50" />
               {type === 'expense' && (
                 <p className="text-[10px] text-gray-500 mt-1">
-                  * Batas maksimal aman input: <span className="text-red-600 font-bold">Rp {paymentMethod === 'cash' ? Math.max(0, realCurrentCashWallet).toLocaleString('id-ID') : Math.max(0, realCurrentBankWallet).toLocaleString('id-ID')}</span>
+                  * Limit aman: <span className="text-red-600 font-bold">Rp {paymentMethod === 'cash' ? Math.max(0, realCurrentCashWallet).toLocaleString('id-ID') : Math.max(0, realCurrentBankWallet).toLocaleString('id-ID')}</span>
                 </p>
               )}
             </div>
@@ -377,38 +358,80 @@ function App() {
               <input type="text" placeholder="Keterangan barang" value={description} onChange={(e) => setDescription(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-gray-50" />
             </div>
 
-            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white p-2.5 rounded-lg text-xs font-black uppercase">
+            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white p-2.5 rounded-lg text-xs font-black uppercase animate-pulse">
               💾 Simpan Catatan
             </button>
           </form>
 
-          {/* RIWAYAT LOG DATA & EXPORT EXCEL */}
+          {/* RIWAYAT LOG DATA */}
           <div className="lg:col-span-2 space-y-4">
             
-            {/* PANEL FILTER SEARCH */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-[10px] text-gray-400 font-bold uppercase mb-1">Rentang Waktu</label>
-                <select value={filterMode} onChange={(e) => setFilterMode(e.target.value)} className="w-full p-2 bg-gray-50 border rounded-lg text-xs">
-                  <option value="month">📅 Sesuai Bulan Acuan</option>
-                  <option value="range">📆 Custom Tanggal</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-[10px] text-gray-400 font-bold uppercase mb-1">Jenis</label>
-                <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="w-full p-2 bg-gray-50 border rounded-lg text-xs">
-                  <option value="all">🔄 Semua Data</option>
-                  <option value="income">📈 Pemasukan</option>
-                  <option value="expense">📉 Pengeluaran</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-[10px] text-gray-400 font-bold uppercase mb-1">Metode</label>
-                <select value={filterPaymentMethod} onChange={(e) => setFilterPaymentMethod(e.target.value)} className="w-full p-2 bg-gray-50 border rounded-lg text-xs">
-                  <option value="all">💸 Semua Metode</option>
-                  <option value="cash">💵 CASH</option>
-                  <option value="bank">🏦 BANK</option>
-                </select>
+            {/* 🛠️ BARU: FILTER PERIODE TAHUN & BULAN YANG DIPISAH */}
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 space-y-3">
+              <div className="text-[11px] font-black text-gray-400 uppercase tracking-wider">🔍 Panel Saring Riwayat Pembukuan</div>
+              
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                {/* Filter Tahun */}
+                <div>
+                  <label className="block text-[9px] text-gray-400 font-bold uppercase mb-0.5">Tahun</label>
+                  <select value={filterYear} onChange={(e) => setFilterYear(e.target.value)} className="w-full p-1.5 bg-gray-50 border rounded-lg text-xs font-bold text-gray-700">
+                    <option value="all">🌐 Semua Tahun</option>
+                    <option value="2025">2025</option>
+                    <option value="2026">2026</option>
+                    <option value="2027">2027</option>
+                  </select>
+                </div>
+
+                {/* Filter Bulan */}
+                <div>
+                  <label className="block text-[9px] text-gray-400 font-bold uppercase mb-0.5">Bulan</label>
+                  <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="w-full p-1.5 bg-gray-50 border rounded-lg text-xs font-bold text-gray-700">
+                    <option value="all">📅 Semua Bulan</option>
+                    <option value="01">Januari</option>
+                    <option value="02">Februari</option>
+                    <option value="03">Maret</option>
+                    <option value="04">April</option>
+                    <option value="05">Mei</option>
+                    <option value="06">Juni</option>
+                    <option value="07">Juli</option>
+                    <option value="08">Agustus</option>
+                    <option value="09">September</option>
+                    <option value="10">Oktober</option>
+                    <option value="11">November</option>
+                    <option value="12">Desember</option>
+                  </select>
+                </div>
+
+                {/* Filter Jenis */}
+                <div>
+                  <label className="block text-[9px] text-gray-400 font-bold uppercase mb-0.5">Jenis</label>
+                  <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="w-full p-1.5 bg-gray-50 border rounded-lg text-xs text-gray-600 font-medium">
+                    <option value="all">🔄 Semua</option>
+                    <option value="income">📈 Masuk</option>
+                    <option value="expense">📉 Keluar</option>
+                  </select>
+                </div>
+
+                {/* Filter Kategori */}
+                <div>
+                  <label className="block text-[9px] text-gray-400 font-bold uppercase mb-0.5">Kategori</label>
+                  <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="w-full p-1.5 bg-gray-50 border rounded-lg text-xs text-gray-600 font-medium">
+                    <option value="all">📁 Semua</option>
+                    {categories.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Filter Metode */}
+                <div>
+                  <label className="block text-[9px] text-gray-400 font-bold uppercase mb-0.5">Metode</label>
+                  <select value={filterPaymentMethod} onChange={(e) => setFilterPaymentMethod(e.target.value)} className="w-full p-1.5 bg-gray-50 border rounded-lg text-xs text-gray-600 font-medium">
+                    <option value="all">💸 Semua</option>
+                    <option value="cash">💵 Cash</option>
+                    <option value="bank">🏦 Bank</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -420,12 +443,12 @@ function App() {
                   <h2 className="text-xs font-black text-gray-700 uppercase">Log Riwayat Transaksi</h2>
                 </div>
                 
-                {/* 🟢 TOMBOL EXPORT KE EXCEL SEKARANG AKTIF */}
+                {/* TOMBOL EXPORT EXCEL BERDASARKAN HASIL FILTER */}
                 <button 
                   onClick={handleExportToExcel}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-xs"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] px-3 py-1.5 rounded-lg flex items-center gap-1 transition"
                 >
-                  🟢 Export ke Excel (.CSV)
+                  🟢 Export Excel (.CSV)
                 </button>
               </div>
 
@@ -443,7 +466,7 @@ function App() {
                   <tbody>
                     {filteredTransactions.length === 0 ? (
                       <tr>
-                        <td colSpan="5" className="p-4 text-center text-gray-400 italic">Tidak ada data transaksi.</td>
+                        <td colSpan="5" className="p-4 text-center text-gray-400 italic">Tidak ada data transaksi yang cocok.</td>
                       </tr>
                     ) : (
                       [...filteredTransactions].sort((a,b) => b.date.localeCompare(a.date)).map((t) => {
