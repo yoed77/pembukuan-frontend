@@ -23,7 +23,7 @@ function App() {
   });
 
   // URL Ngrok Resmi Mas Yudi Yang Sudah Terbukti Aktif Sempurna
-  const BACKEND_URL = 'https://aplikasi-keuangan-backend.vercel.app/';
+  const BACKEND_URL = 'https://aplikasi-keuangan-backend.vercel.app';
 
   const fetchData = async () => {
     try {
